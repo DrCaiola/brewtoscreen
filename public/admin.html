@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>brewtoscreen admin</title>
+<style>
+  :root { --bg:#f6f4ee; --panel:#fff; --text:#1d1d1b; --muted:#6b6f78; --line:#e2dfd6; --accent:#c8871a; --ok:#2f8f4e; --err:#c0392b; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12141a; --panel:#1b1f27; --text:#f1efe8; --muted:#9aa3b2; --line:#2b3240; --accent:#f2b53a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:"Segoe UI",system-ui,sans-serif; line-height:1.4; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 24px 16px 60px; }
+  h1 { margin: 0 0 4px; font-size: 26px; }
+  h2 { font-size: 18px; margin: 0 0 12px; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-bottom: 20px; }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  input[type=text], input[type=number] { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: inherit; }
+  input[type=number] { width: 64px; }
+  button { font: inherit; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #1a1405; font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+  th, td { text-align: left; padding: 10px 8px; border-top: 1px solid var(--line); vertical-align: middle; }
+  th { color: var(--muted); font-weight: 500; font-size: 13px; border-top: 0; }
+  td.num { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .msg { min-height: 1.4em; font-size: 14px; margin-top: 10px; }
+  .msg.ok { color: var(--ok); } .msg.err { color: var(--err); }
+  .pill { display:inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--line); color: var(--muted); }
+  .device { display:flex; justify-content:space-between; align-items:center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); flex-wrap: wrap; }
+  .device:first-of-type { border-top: 0; }
+  code { background: rgba(127,127,127,.15); padding: 2px 6px; border-radius: 6px; font-size: 13px; }
+  tr.off td:not(:first-child) { opacity: .55; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>brewtoscreen</h1>
+  <p class="sub">Pick what's on tap from your Brewfather batches, then send the board to the TV.
+    Guests can open <a id="displayLink" href="/" target="_blank">the tap list</a> on their phones.</p>
+
+  <section>
+    <h2>Taps</h2>
+    <div class="row">
+      <label>Board title <input type="text" id="title" placeholder="On Tap" maxlength="80"></label>
+      <button id="refreshBatches" title="Re-pull from Brewfather (ignores cache)">Refresh from Brewfather</button>
+      <span id="source" class="pill"></span>
+    </div>
+    <table>
+      <thead><tr><th>On tap</th><th>Tap #</th><th>Beer</th><th>Style</th><th>ABV</th><th>IBU</th><th>Status</th><th>Brewed</th></tr></thead>
+      <tbody id="batches"><tr><td colspan="8" class="muted">Loading…</td></tr></tbody>
+    </table>
+    <div class="row" style="margin-top:14px">
+      <button class="primary" id="save">Save taps</button>
+      <span class="muted">The TV and web page update within a minute of saving.</span>
+    </div>
+    <div class="msg" id="tapsMsg"></div>
+  </section>
+
+  <section>
+    <h2>Chromecast</h2>
+    <p class="muted">The TV will load <code id="displayUrl">…</code>. The Chromecast has to be able to reach this computer on your network.</p>
+    <p class="muted" id="defaultTv"></p>
+    <div class="row">
+      <button id="scan">Scan for devices</button>
+      <label title="Default loads the page directly on the TV, which is the reliable mode. Frame mode keeps DashCast listening but Chromecasts often block plain-http pages in it."><input type="checkbox" id="frame"> Frame mode (experimental)</label>
+      <label>Manual IP <input type="text" id="manualHost" placeholder="192.168.1.20" style="width:140px"></label>
+      <button id="castManual">Cast to IP</button>
+    </div>
+    <div id="devices"></div>
+    <div class="msg" id="castMsg"></div>
+  </section>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  let batches = [];
+  let assignments = new Map(); // batchId -> tap number
+
+  function msg(id, text, cls = '') { const el = $(id); el.textContent = text; el.className = 'msg ' + cls; }
+  function esc(s) { return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+  const fmt = (ms) => (ms ? new Date(ms).toLocaleDateString() : '');
+
+  async function api(path, opts) {
+    const res = await fetch(path, { headers: { 'content-type': 'application/json' }, ...opts });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+    return body;
+  }
+
+  async function loadBatches(refresh = false) {
+    msg('tapsMsg', '');
+    $('batches').innerHTML = '<tr><td colspan="8" class="muted">Loading…</td></tr>';
+    try {
+      const data = await api('/api/batches' + (refresh ? '?refresh=1' : ''));
+      batches = data.batches;
+      assignments = new Map(data.taps.map((t) => [t.batchId, t.tap]));
+      $('title').value = data.title || '';
+      $('displayUrl').textContent = data.displayUrl;
+      $('displayLink').href = data.displayUrl;
+      $('source').textContent = data.source === 'sample'
+        ? 'Sample data: add Brewfather credentials to .env'
+        : `Brewfather · cached ${Math.round((data.cacheAgeMs || 0) / 60000)} min ago`;
+      renderBatches();
+    } catch (err) {
+      $('batches').innerHTML = '';
+      msg('tapsMsg', err.message, 'err');
+    }
+  }
+
+  function renderBatches() {
+    if (!batches.length) {
+      $('batches').innerHTML = '<tr><td colspan="8" class="muted">No batches found with the configured statuses.</td></tr>';
+      return;
+    }
+    $('batches').innerHTML = batches.map((b) => {
+      const tap = assignments.get(b.id);
+      const on = tap != null;
+      return `<tr class="${on ? '' : 'off'}" data-id="${esc(b.id)}">
+        <td><input type="checkbox" class="on" ${on ? 'checked' : ''}></td>
+        <td><input type="number" class="tap" min="1" max="99" value="${on ? tap : ''}" ${on ? '' : 'disabled'}></td>
+        <td><strong>${esc(b.name)}</strong>${b.batchNo != null ? ` <span class="muted">#${b.batchNo}</span>` : ''}</td>
+        <td>${esc(b.style || '')}</td>
+        <td class="num">${b.abv != null ? b.abv.toFixed(1) + '%' : ''}</td>
+        <td class="num">${b.ibu != null ? Math.round(b.ibu) : ''}</td>
+        <td><span class="pill">${esc(b.status)}</span></td>
+        <td class="num">${fmt(b.brewDate)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function nextTapNumber() {
+    const used = new Set([...assignments.values()]);
+    let n = 1; while (used.has(n)) n++;
+    return n;
+  }
+
+  $('batches').addEventListener('change', (e) => {
+    const tr = e.target.closest('tr'); if (!tr) return;
+    const id = tr.dataset.id;
+    const tapInput = tr.querySelector('.tap');
+    if (e.target.classList.contains('on')) {
+      if (e.target.checked) {
+        const n = nextTapNumber();
+        assignments.set(id, n);
+        tapInput.disabled = false; tapInput.value = n; tr.classList.remove('off');
+      } else {
+        assignments.delete(id);
+        tapInput.disabled = true; tapInput.value = ''; tr.classList.add('off');
+      }
+    } else if (e.target.classList.contains('tap')) {
+      assignments.set(id, Number(e.target.value) || nextTapNumber());
+    }
+  });
+
+  $('save').addEventListener('click', async () => {
+    const taps = [...assignments].map(([batchId, tap]) => ({ batchId, tap }));
+    try {
+      await api('/api/taps', { method: 'PUT', body: JSON.stringify({ taps, title: $('title').value }) });
+      msg('tapsMsg', `Saved ${taps.length} tap${taps.length === 1 ? '' : 's'}.`, 'ok');
+    } catch (err) { msg('tapsMsg', err.message, 'err'); }
+  });
+
+  $('refreshBatches').addEventListener('click', () => loadBatches(true));
+
+  // ---- Chromecast ----
+  let defaultDevice = null;
+  function deviceRow(d, isLast) {
+    const isDefault = defaultDevice && defaultDevice.host === d.host;
+    return `<div class="device" data-host="${esc(d.host)}" data-port="${d.port || 8009}" data-name="${esc(d.name)}">
+      <div><strong>${esc(d.name)}</strong> <span class="muted">${esc(d.model || '')} · ${esc(d.host)}</span>
+        ${isDefault ? '<span class="pill">default TV</span>' : ''}${isLast ? ' <span class="pill">last used</span>' : ''}</div>
+      <div class="row">
+        <button class="primary cast">Cast tap list</button>
+        <button class="stop">Stop</button>
+        ${isDefault ? '' : '<button class="makeDefault">Make default</button>'}
+      </div>
+    </div>`;
+  }
+  function renderDefault() {
+    $('defaultTv').innerHTML = defaultDevice
+      ? `Default TV: <strong>${esc(defaultDevice.name)}</strong>. One-button page: <a href="/cast.html" target="_blank">/cast.html</a>, or run <code>cast-to-tv.cmd</code>.`
+      : 'No default TV yet. Scan, then click "Make default" next to your TV to enable the one-button page.';
+  }
+  fetch('/api/cast/default').then((r) => r.json()).then((d) => { defaultDevice = d.device; renderDefault(); });
+
+  $('scan').addEventListener('click', async () => {
+    $('scan').disabled = true; msg('castMsg', 'Scanning (about 4 seconds)…');
+    try {
+      const data = await api('/api/cast/devices');
+      $('displayUrl').textContent = data.displayUrl;
+      const screens = data.devices.filter((d) => d.video);
+      const hidden = data.devices.length - screens.length;
+      if (!screens.length) {
+        $('devices').innerHTML = '';
+        msg('castMsg', 'No Chromecasts with a screen found. Make sure the TV is on and on the same Wi-Fi, or enter its IP manually.', 'err');
+      } else {
+        $('devices').innerHTML = screens.map((d) => deviceRow(d, data.lastCast && data.lastCast.host === d.host)).join('');
+        msg('castMsg', `Found ${screens.length} screen${screens.length === 1 ? '' : 's'}${hidden ? ` (${hidden} audio-only device${hidden === 1 ? '' : 's'} hidden)` : ''}.`, 'ok');
+      }
+    } catch (err) { msg('castMsg', err.message, 'err'); }
+    finally { $('scan').disabled = false; }
+  });
+
+  async function cast(host, port, name) {
+    msg('castMsg', `Casting to ${name}…`);
+    try {
+      const r = await api('/api/cast', { method: 'POST', body: JSON.stringify({ host, port, name, force: !$('frame').checked }) });
+      if (r.loaded) msg('castMsg', `${name} is showing the tap list (${r.url}).`, 'ok');
+      else msg('castMsg', `Sent ${r.url} to ${name} ${r.attempts} times but never saw it load the page. Check that the TV is on and can reach this computer.`, 'err');
+    } catch (err) { msg('castMsg', err.message, 'err'); }
+  }
+
+  $('devices').addEventListener('click', async (e) => {
+    const row = e.target.closest('.device'); if (!row) return;
+    const { host, port, name } = row.dataset;
+    if (e.target.classList.contains('cast')) await cast(host, port, name);
+    if (e.target.classList.contains('makeDefault')) {
+      try {
+        const r = await api('/api/cast/default', { method: 'PUT', body: JSON.stringify({ host, port, name }) });
+        defaultDevice = r.device; renderDefault();
+        row.querySelector('.makeDefault').remove();
+        msg('castMsg', `${name} is now the default TV.`, 'ok');
+      } catch (err) { msg('castMsg', err.message, 'err'); }
+    }
+    if (e.target.classList.contains('stop')) {
+      try { const r = await api('/api/cast/stop', { method: 'POST', body: JSON.stringify({ host, port }) });
+        msg('castMsg', r.stopped ? `Stopped casting on ${name}.` : `${name} was already idle.`, 'ok');
+      } catch (err) { msg('castMsg', err.message, 'err'); }
+    }
+  });
+
+  $('castManual').addEventListener('click', () => {
+    const host = $('manualHost').value.trim();
+    if (!host) return msg('castMsg', 'Enter the Chromecast IP first.', 'err');
+    cast(host, 8009, host);
+  });
+
+  loadBatches();
+</script>
+</body>
+</html>

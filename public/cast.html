@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Cast taps</title>
+<style>
+  :root { --bg:#12141a; --text:#f1efe8; --muted:#9aa3b2; --accent:#f2b53a; --ok:#4ccf7a; --err:#ff8a80; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:24px;
+         background:var(--bg); color:var(--text); font-family:"Segoe UI",system-ui,sans-serif; padding:24px; text-align:center; }
+  button { font: inherit; font-size: 28px; font-weight: 700; padding: 28px 40px; border-radius: 999px; border: 0;
+           background: var(--accent); color: #1a1405; cursor: pointer; width: min(100%, 420px); }
+  button:disabled { opacity: .6; }
+  .muted { color: var(--muted); }
+  #msg { min-height: 2em; font-size: 18px; }
+  .ok { color: var(--ok); } .err { color: var(--err); }
+  a { color: var(--muted); }
+</style>
+</head>
+<body>
+  <div class="muted" id="device">Loading…</div>
+  <button id="go" disabled>Put taps on the TV</button>
+  <div id="msg"></div>
+  <div><a href="/admin.html">Change taps or TV</a> · <a href="/">View the board</a></div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  let device = null;
+  fetch('/api/cast/default').then((r) => r.json()).then((d) => {
+    device = d.device;
+    if (device) { $('device').textContent = 'TV: ' + device.name; $('go').disabled = false; }
+    else $('device').innerHTML = 'No default TV yet. Pick one on the <a href="/admin.html">admin page</a> with "Make default".';
+  });
+  $('go').addEventListener('click', async () => {
+    $('go').disabled = true; $('msg').className = ''; $('msg').textContent = 'Casting… (takes a few seconds)';
+    try {
+      const r = await fetch('/api/cast/default', { method: 'POST' }).then(async (res) => {
+        const b = await res.json(); if (!res.ok) throw new Error(b.error || res.status); return b;
+      });
+      $('msg').className = r.loaded ? 'ok' : 'err';
+      $('msg').textContent = r.loaded ? `${device.name} is showing the taps.` : 'Sent, but never saw the TV load the page. Is it on?';
+    } catch (err) { $('msg').className = 'err'; $('msg').textContent = err.message; }
+    finally { $('go').disabled = false; }
+  });
+</script>
+</body>
+</html>

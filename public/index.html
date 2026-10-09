@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>On Tap</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #181c24;
+    --panel-2: #1f2430;
+    --text: #f3f1ea;
+    --muted: #9aa3b2;
+    --accent: #f2b53a;
+    --line: #2b3240;
+    --radius: 18px;
+    /* TVs often crop the outer few percent of the picture (overscan). */
+    --safe: 3vmin;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: radial-gradient(1200px 600px at 50% -10%, #1c2130 0%, var(--bg) 60%);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+    display: flex; flex-direction: column;
+    padding: calc(var(--safe) + clamp(8px, 1vw, 16px));
+    gap: clamp(10px, 1.6vh, 24px);
+    overflow: hidden;
+  }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+  h1 { margin: 0; font-size: clamp(26px, 4vw, 60px); letter-spacing: 0.02em; font-weight: 700; }
+  .clock { color: var(--muted); font-size: clamp(16px, 2vw, 30px); font-variant-numeric: tabular-nums; }
+
+  main {
+    flex: 1; min-height: 0;
+    display: grid;
+    gap: clamp(10px, 1.4vw, 22px);
+    grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr));
+    grid-auto-rows: 1fr;
+  }
+  .tap {
+    --fs: var(--scale, 1);
+    background: linear-gradient(180deg, var(--panel-2), var(--panel));
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: calc(clamp(12px, 1.4vw, 24px) * var(--fs));
+    display: grid;
+    grid-template-columns: auto auto 1fr;
+    grid-template-rows: auto auto 1fr;
+    column-gap: clamp(10px, 1.2vw, 20px);
+    row-gap: clamp(4px, 0.6vh, 10px);
+    align-items: start;
+    min-height: 0; overflow: hidden;
+  }
+  .num {
+    grid-row: 1 / span 3;
+    width: calc(clamp(40px, 4vw, 76px) * var(--fs)); height: calc(clamp(40px, 4vw, 76px) * var(--fs));
+    border-radius: 50%;
+    display: grid; place-items: center;
+    background: var(--accent); color: #1a1405;
+    font-weight: 800; font-size: calc(clamp(18px, 2.1vw, 38px) * var(--fs));
+  }
+  .glass {
+    grid-row: 1 / span 3;
+    height: calc(clamp(56px, 7.2vw, 128px) * var(--fs));
+    width: auto;
+    filter: drop-shadow(0 4px 10px rgba(0,0,0,.45));
+  }
+  .name {
+    font-size: calc(clamp(20px, 2.5vw, 44px) * var(--fs));
+    font-weight: 700; line-height: 1.1;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .style { color: var(--muted); font-size: calc(clamp(14px, 1.45vw, 25px) * var(--fs)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bottom { align-self: end; display: flex; flex-direction: column; gap: clamp(4px, 0.6vh, 10px); min-width: 0; }
+  .stats { display: flex; flex-wrap: wrap; gap: clamp(10px, 1.5vw, 26px); }
+  .stat { display: flex; flex-direction: column; }
+  .stat b { font-size: calc(clamp(18px, 2.05vw, 36px) * var(--fs)); font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .stat span { font-size: calc(clamp(10px, 0.9vw, 15px) * var(--fs)); color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  .meta { color: var(--muted); font-size: calc(clamp(12px, 1.05vw, 17px) * var(--fs)); display: flex; gap: 1.2em; flex-wrap: wrap; }
+  .empty {
+    grid-column: 1 / -1; display: grid; place-items: center; text-align: center;
+    color: var(--muted); font-size: clamp(18px, 2vw, 32px);
+  }
+  footer { color: var(--muted); font-size: clamp(11px, 0.9vw, 15px); display: flex; justify-content: space-between; }
+  .err { color: #ff8a80; }
+
+  /* Phone: single column, scrollable. */
+  @media (max-width: 700px) {
+    body { overflow: auto; height: auto; min-height: 100%; --safe: 0px; }
+    main { grid-template-columns: 1fr !important; grid-auto-rows: auto; }
+    .tap { --fs: 1; }
+    .name { white-space: normal; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1 id="title">On Tap</h1>
+    <div class="clock" id="clock"></div>
+  </header>
+  <main id="taps"><div class="empty">Loading…</div></main>
+  <footer>
+    <span id="status"></span>
+    <span>brewtoscreen</span>
+  </footer>
+
+<script>
+  // SRM -> approximate beer colour (Standard Reference Method chart).
+  function srmToHex(srm) {
+    if (srm == null) return '#c9a227';
+    const table = [
+      [1,'#FFE699'],[2,'#FFD878'],[3,'#FFCA5A'],[4,'#FFBF42'],[5,'#FBB123'],[6,'#F8A600'],[7,'#F39C00'],
+      [8,'#EA8F00'],[9,'#E58500'],[10,'#DE7C00'],[11,'#D77200'],[12,'#CF6900'],[13,'#CB6200'],[14,'#C35900'],
+      [15,'#BB5100'],[16,'#B54C00'],[17,'#B04500'],[18,'#A63E00'],[19,'#A13700'],[20,'#9B3200'],[21,'#952D00'],
+      [22,'#8E2900'],[23,'#882300'],[24,'#821E00'],[25,'#7B1A00'],[26,'#771900'],[27,'#701400'],[28,'#6A0E00'],
+      [29,'#660D00'],[30,'#5E0B00'],[35,'#4C0505'],[40,'#300000'],
+    ];
+    let hex = table[table.length - 1][1];
+    for (const [s, h] of table) { if (srm <= s) { hex = h; break; } }
+    return hex;
+  }
+
+  // A pint glass filled with the beer's colour, with a head of foam.
+  function glassSvg(srm) {
+    const beer = srmToHex(srm);
+    return `
+      <svg class="glass" viewBox="0 0 64 100" aria-hidden="true">
+        <defs>
+          <linearGradient id="g${srm}" x1="0" x2="1">
+            <stop offset="0" stop-color="${beer}" stop-opacity=".85"/>
+            <stop offset=".45" stop-color="${beer}"/>
+            <stop offset="1" stop-color="#000" stop-opacity=".35"/>
+          </linearGradient>
+        </defs>
+        <!-- beer -->
+        <path d="M11 22 L53 22 L49 92 Q48 96 44 96 L20 96 Q16 96 15 92 Z" fill="url(#g${srm})"/>
+        <!-- glass outline + highlight -->
+        <path d="M9 12 L55 12 L50 92 Q49 97 44 97 L20 97 Q15 97 14 92 Z" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="3"/>
+        <path d="M18 28 L16 86" stroke="rgba(255,255,255,.35)" stroke-width="3" stroke-linecap="round"/>
+        <!-- foam -->
+        <path d="M8 16 Q8 4 18 7 Q22 -1 32 3 Q42 -2 46 6 Q56 3 56 14 Q58 22 50 23 L13 23 Q6 23 8 16 Z" fill="#fff8e6"/>
+        <path d="M13 23 Q22 29 32 23 Q42 29 50 23" fill="none" stroke="#f1e8d2" stroke-width="2"/>
+      </svg>`;
+  }
+
+  function fmtDate(ms) {
+    if (!ms) return null;
+    return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+
+  function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+  // Columns and a text scale, tuned for a 16:9 TV.
+  function layout(n) {
+    if (n <= 1) return { cols: 1, scale: 1.2 };
+    if (n <= 2) return { cols: 2, scale: 1.1 };
+    if (n <= 4) return { cols: 2, scale: 1 };
+    if (n <= 6) return { cols: 2, scale: 0.85 };
+    return { cols: 2, scale: 0.72 };   // 7-8 taps: two columns of four
+  }
+
+  function render(data) {
+    document.getElementById('title').textContent = data.title || 'On Tap';
+    document.title = data.title || 'On Tap';
+    const main = document.getElementById('taps');
+    const taps = data.taps || [];
+    const { cols, scale } = layout(taps.length);
+    main.style.setProperty('--cols', cols);
+    main.style.setProperty('--scale', scale);
+    if (!taps.length) {
+      main.innerHTML = '<div class="empty">Nothing on tap right now.<br>Pick some batches on the admin page.</div>';
+      return;
+    }
+    main.innerHTML = taps.map(({ tap, label, beer: b }) => {
+      const stats = [
+        b.abv != null && `<div class="stat"><b>${b.abv.toFixed(1)}%</b><span>ABV</span></div>`,
+        b.ibu != null && `<div class="stat"><b>${Math.round(b.ibu)}</b><span>IBU</span></div>`,
+        b.og != null && `<div class="stat"><b>${b.og.toFixed(3)}</b><span>OG</span></div>`,
+        b.fg != null && `<div class="stat"><b>${b.fg.toFixed(3)}</b><span>FG</span></div>`,
+        b.srm != null && `<div class="stat"><b>${Math.round(b.srm)}</b><span>SRM</span></div>`,
+      ].filter(Boolean).join('');
+      const meta = [
+        b.batchNo != null && `Batch #${b.batchNo}`,
+        b.bottlingDate && `Kegged ${fmtDate(b.bottlingDate)}`,
+        !b.bottlingDate && b.brewDate && `Brewed ${fmtDate(b.brewDate)}`,
+        label && esc(label),
+      ].filter(Boolean).join(' · ');
+      return `
+        <article class="tap">
+          <div class="num">${tap}</div>
+          ${glassSvg(b.srm)}
+          <div class="name" title="${esc(b.name)}">${esc(b.name)}</div>
+          <div class="style">${esc(b.style || b.type || '')}</div>
+          <div class="bottom">
+            <div class="stats">${stats}</div>
+            <div class="meta">${meta}</div>
+          </div>
+        </article>`;
+    }).join('');
+  }
+
+  async function refresh() {
+    const status = document.getElementById('status');
+    try {
+      const res = await fetch('/api/taps', { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      render(await res.json());
+      status.className = '';
+      status.textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    } catch (err) {
+      status.className = 'err';
+      status.textContent = 'Could not reach the tap server: ' + err.message;
+    }
+  }
+
+  function tickClock() {
+    document.getElementById('clock').textContent =
+      new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  }
+
+  refresh();
+  tickClock();
+  setInterval(refresh, 60_000);
+  setInterval(tickClock, 10_000);
+</script>
+</body>
+</html>
