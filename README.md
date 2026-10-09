@@ -20,8 +20,12 @@ Brewfather API  ──▶  brewtoscreen (Node server on your PC/Pi)
    ```
 
 3. Copy `.env.example` to `.env` and fill in your Brewfather credentials.
-   In the Brewfather app go to **Settings → API**, enable the API, copy your
-   **User ID**, and generate an API key with the **Read Batches** scope.
+   In the Brewfather app go to **Settings → API** and click **Generate**.
+   The dialog shows two values: the **User ID** (a short 28-character string)
+   and the **API key**. Copy both. The key is only shown once, and generating
+   a new key replaces the old one, so if you closed the dialog without the
+   User ID, generate again and copy both. Give the key the **Read Batches**
+   scope.
 4. Start it:
 
    ```bash
@@ -55,6 +59,40 @@ Things to know:
 - If your computer's LAN IP changes, set `PUBLIC_URL` in `.env` to a fixed
   address or give the computer a DHCP reservation on your router.
 - Casting ends if someone casts something else to the TV. Just cast again.
+
+## One button to put it on the TV
+
+On the admin page, scan and click **Make default** next to your TV. Then any
+of these casts the board:
+
+- Open <http://localhost:3000/cast.html> (or the same address with your
+  computer's LAN IP from a phone) and press the big button. Add it to your
+  phone's home screen for a one-tap launcher.
+- Double-click `cast-to-tv.cmd`. Make a desktop shortcut to it.
+- Hit <http://localhost:3000/go> from anything that can open a URL: a Stream
+  Deck button, a Home Assistant automation, a smart button, a Siri/Google
+  shortcut.
+- Set `CAST_ON_START=true` in `.env` and the server casts five seconds after
+  it starts, so a shortcut that runs `npm start` also launches the TV.
+
+## Running it without your desktop
+
+A Chromecast can only be driven from a device on the same network, so some
+box on your LAN has to run this. It does not have to be your desktop:
+
+- **Raspberry Pi (recommended).** Any Pi, even a Zero 2 W, runs this fine.
+  Install Node, clone the repo, `npm install`, copy `.env`, and run it as a
+  service (`pm2` or a systemd unit) so it starts on boot. With
+  `CAST_ON_START=true` the TV comes up whenever the Pi does.
+- **GitHub Pages for the guest page.** The board for guests can live on GitHub
+  Pages: a scheduled GitHub Action pulls Brewfather and writes `taps.json`
+  into the repo, and the static page reads that. The LAN box is then only
+  needed to send the cast command, and it can cast the GitHub Pages URL
+  instead of its own. This is not built yet; ask for it if you want it.
+
+What will not work: hosting only on GitHub Pages with no LAN box, because
+nothing could talk to the Chromecast, and the Brewfather API key must not be
+exposed in a public page.
 
 ## Web page for guests
 
