@@ -61,18 +61,14 @@
   .bubbles {
     align-self: center;
     display: grid; grid-template-columns: auto auto;
-    gap: calc(clamp(6px, 0.7vw, 12px) * var(--fs));
+    column-gap: calc(clamp(18px, 2.2vw, 44px) * var(--fs));
+    row-gap: calc(clamp(6px, 0.9vw, 18px) * var(--fs));
+    padding-left: calc(clamp(14px, 1.6vw, 32px) * var(--fs));
+    border-left: 1px solid var(--line);
   }
-  .bubble {
-    width: calc(clamp(74px, 8vw, 156px) * var(--fs));
-    height: calc(clamp(46px, 4.9vw, 92px) * var(--fs));
-    border-radius: calc(clamp(8px, 0.8vw, 16px) * var(--fs));
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.1em;
-    background: rgba(242, 181, 58, .10);
-    border: 2px solid rgba(242, 181, 58, .38);
-  }
-  .bubble b { font-size: calc(clamp(15px, 1.75vw, 32px) * var(--fs)); font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
-  .bubble span { font-size: calc(clamp(8px, 0.8vw, 13px) * var(--fs)); color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; }
+  .bubble { display: flex; flex-direction: column; min-width: calc(clamp(44px, 4.6vw, 90px) * var(--fs)); }
+  .bubble b { font-size: calc(clamp(20px, 2.5vw, 46px) * var(--fs)); font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+  .bubble span { font-size: calc(clamp(9px, 0.85vw, 14px) * var(--fs)); color: var(--muted); text-transform: uppercase; letter-spacing: 0.14em; margin-top: 0.35em; }
   .num {
     width: calc(clamp(40px, 4vw, 76px) * var(--fs)); height: calc(clamp(40px, 4vw, 76px) * var(--fs));
     border-radius: 50%;
