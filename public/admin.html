@@ -49,6 +49,10 @@
       <button id="refreshBatches" title="Re-pull from Brewfather (ignores cache)">Refresh from Brewfather</button>
       <span id="source" class="pill"></span>
     </div>
+    <div class="row" style="margin-top:10px">
+      <label>Number of taps <input type="number" id="tapCount" min="1" max="12"></label>
+      <label><input type="checkbox" id="showAll"> Always show every tap (empty ones say "Kicked")</label>
+    </div>
     <table>
       <thead><tr><th>On tap</th><th>Tap #</th><th>Beer</th><th>Style</th><th>ABV</th><th>IBU</th><th>Status</th><th>Brewed</th></tr></thead>
       <tbody id="batches"><tr><td colspan="8" class="muted">Loading…</td></tr></tbody>
@@ -123,6 +127,8 @@
       batches = data.batches;
       assignments = new Map(data.taps.map((t) => [t.batchId, t.tap]));
       $('title').value = data.title || '';
+      $('tapCount').value = data.tapCount ?? 7;
+      $('showAll').checked = data.showAll !== false;
       $('displayUrl').textContent = data.displayUrl;
       $('displayLink').href = data.displayUrl;
       $('source').textContent = data.source === 'sample'
@@ -183,7 +189,9 @@
   $('save').addEventListener('click', async () => {
     const taps = [...assignments].map(([batchId, tap]) => ({ batchId, tap }));
     try {
-      await api('/api/taps', { method: 'PUT', body: JSON.stringify({ taps, title: $('title').value }) });
+      await api('/api/taps', { method: 'PUT', body: JSON.stringify({
+        taps, title: $('title').value, tapCount: Number($('tapCount').value) || 7, showAll: $('showAll').checked,
+      }) });
       msg('tapsMsg', `Saved ${taps.length} tap${taps.length === 1 ? '' : 's'}.`, 'ok');
     } catch (err) { msg('tapsMsg', err.message, 'err'); }
   });

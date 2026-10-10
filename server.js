@@ -26,7 +26,11 @@ const brewfather = new BrewfatherClient({
 //   mode: 'info' (rotating scores/trivia/facts, bottom-right) | 'brewery' (name tile, top-left) | 'none'
 //   categories: Open Trivia DB category ids; empty = any category.
 const DEFAULT_EXTRA = { mode: 'info', breweryName: '', leagues: ['nfl', 'mlb'], trivia: true, categories: [], seconds: 12 };
-let state = { title: 'On Tap', taps: [], lastCast: null, defaultDevice: null, extra: { ...DEFAULT_EXTRA } };
+// tapCount + showAll: always draw this many tap slots; unassigned ones show as "Kicked".
+let state = {
+  title: 'On Tap', taps: [], tapCount: 7, showAll: true,
+  lastCast: null, defaultDevice: null, extra: { ...DEFAULT_EXTRA },
+};
 
 async function loadState() {
   try {
@@ -51,11 +55,18 @@ async function getBatches(force = false) {
 async function tapList() {
   const { batches, source } = await getBatches();
   const byId = new Map(batches.map((b) => [b.id, b]));
-  const taps = state.taps
-    .slice()
-    .sort((a, b) => a.tap - b.tap)
-    .map((t) => ({ tap: t.tap, label: t.label || null, beer: byId.get(t.batchId) ?? null }))
-    .filter((t) => t.beer);
+  const assigned = new Map();
+  for (const t of state.taps) {
+    const beer = byId.get(t.batchId);
+    if (beer) assigned.set(t.tap, { tap: t.tap, label: t.label || null, beer });
+  }
+  let taps;
+  if (state.showAll) {
+    const n = Math.max(state.tapCount, ...assigned.keys());
+    taps = Array.from({ length: n }, (_, i) => assigned.get(i + 1) ?? { tap: i + 1, label: null, beer: null });
+  } else {
+    taps = [...assigned.values()].sort((a, b) => a.tap - b.tap);
+  }
   return { title: state.title, taps, extra: state.extra, source, updatedAt: Date.now() };
 }
 
@@ -101,20 +112,22 @@ app.get('/api/taps', wrap(async (req, res) => res.json(await tapList())));
 // Admin: all candidate batches from Brewfather plus current assignments.
 app.get('/api/batches', wrap(async (req, res) => {
   const data = await getBatches(req.query.refresh === '1');
-  res.json({ ...data, taps: state.taps, title: state.title, displayUrl: displayUrl() });
+  res.json({ ...data, taps: state.taps, title: state.title, tapCount: state.tapCount, showAll: state.showAll, displayUrl: displayUrl() });
 }));
 
 // Admin: replace tap assignments.
 app.put('/api/taps', wrap(async (req, res) => {
-  const { taps, title } = req.body ?? {};
+  const { taps, title, tapCount, showAll } = req.body ?? {};
   if (!Array.isArray(taps)) return res.status(400).json({ error: 'taps must be an array' });
   const clean = taps
     .filter((t) => t && typeof t.batchId === 'string')
     .map((t, i) => ({ tap: Number(t.tap) || i + 1, batchId: t.batchId, label: t.label ? String(t.label).slice(0, 60) : undefined }));
   state.taps = clean;
   if (typeof title === 'string') state.title = title.slice(0, 80);
+  if (tapCount !== undefined) state.tapCount = Math.min(12, Math.max(1, Number(tapCount) || 7));
+  if (showAll !== undefined) state.showAll = Boolean(showAll);
   await saveState();
-  res.json({ ok: true, taps: state.taps, title: state.title });
+  res.json({ ok: true, taps: state.taps, title: state.title, tapCount: state.tapCount, showAll: state.showAll });
 }));
 
 // Spare-tile settings and content.

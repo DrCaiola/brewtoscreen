@@ -81,6 +81,10 @@
   .stat b { font-size: calc(clamp(18px, 2.05vw, 36px) * var(--fs)); font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
   .stat span { font-size: calc(clamp(10px, 0.9vw, 15px) * var(--fs)); color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
   .meta { color: var(--muted); font-size: calc(clamp(12px, 1.05vw, 17px) * var(--fs)); display: flex; gap: 1.2em; flex-wrap: wrap; }
+  .tap.kicked { background: var(--panel); border-style: dashed; border-color: #343b4a; }
+  .tap.kicked .num { background: #3a3f4b; color: #8b93a3; }
+  .tap.kicked .name { color: #6f7785; letter-spacing: 0.04em; }
+  .tap.kicked .style, .tap.kicked .meta { color: #5c6473; }
   .empty {
     grid-column: 1 / -1; display: grid; place-items: center; text-align: center;
     color: var(--muted); font-size: clamp(18px, 2vw, 32px);
@@ -185,7 +189,28 @@
     return { cols: 2, scale: 0.8 };   // 7-8 cards: two columns of four
   }
 
+  // Empty glass for a kicked tap: outline only, a bit of foam residue.
+  function emptyGlassSvg() {
+    return `
+      <svg class="glass" viewBox="0 0 64 100" aria-hidden="true">
+        <path d="M10 12 L54 12 L49.5 90 Q49 96 43 96 L21 96 Q15 96 14.5 90 Z" fill="rgba(255,255,255,.04)" stroke="rgba(255,255,255,.28)" stroke-width="2.5" stroke-linejoin="round"/>
+        <path d="M15.6 82 L48.4 82 L48 90 Q47.5 95 43 95 L21 95 Q16.5 95 16 90 Z" fill="rgba(255,255,255,.08)"/>
+        <path d="M19 28 L17.5 80" stroke="rgba(255,255,255,.14)" stroke-width="3.5" stroke-linecap="round"/>
+        <path d="M14 18 Q20 24 26 18 M36 16 Q42 22 48 17" fill="none" stroke="rgba(255,246,224,.35)" stroke-width="3" stroke-linecap="round"/>
+      </svg>`;
+  }
+
   function tapCard({ tap, label, beer: b }) {
+    if (!b) {
+      return `
+        <article class="tap kicked">
+          <div class="num">${tap}</div>
+          ${emptyGlassSvg()}
+          <div class="name">Kicked</div>
+          <div class="style">${esc(label || 'Next batch coming soon')}</div>
+          <div class="bottom"><div class="meta">Empty keg</div></div>
+        </article>`;
+    }
     const stats = [
       b.abv != null && `<div class="stat"><b>${b.abv.toFixed(1)}%</b><span>ABV</span></div>`,
       b.ibu != null && `<div class="stat"><b>${Math.round(b.ibu)}</b><span>IBU</span></div>`,
