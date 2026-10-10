@@ -65,6 +65,26 @@
   </section>
 
   <section>
+    <h2>Not in Brewfather</h2>
+    <p class="muted">Seltzer, hopped tea, cider, anything else on a tap. These show up in the tap list above like any batch. Calories and carbs are per 12 oz.</p>
+    <div class="row">
+      <label>Type <select id="cKind"></select></label>
+      <label>Name <input type="text" id="cName" placeholder="Lime Seltzer" maxlength="60"></label>
+      <label>Style/flavor <input type="text" id="cStyle" placeholder="(optional)" maxlength="60" style="width:150px"></label>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label>ABV % <input type="number" id="cAbv" step="0.1" min="0" max="30"></label>
+      <label>IBU <input type="number" id="cIbu" step="1" min="0"></label>
+      <label>Calories <input type="number" id="cCal" step="1" min="0"></label>
+      <label>Carbs g <input type="number" id="cCarbs" step="0.1" min="0"></label>
+      <label>Note <input type="text" id="cNotes" placeholder="e.g. Citra dry-hopped" maxlength="120" style="width:180px"></label>
+      <button class="primary" id="addCustom">Add</button>
+    </div>
+    <div id="customList" style="margin-top:12px"></div>
+    <div class="msg" id="customMsg"></div>
+  </section>
+
+  <section>
     <h2>Spare tile</h2>
     <p class="muted">With an odd number of taps there is one empty slot on the board. Choose what fills it.</p>
     <div class="row">
@@ -156,8 +176,8 @@
         <td>${esc(b.style || '')}</td>
         <td class="num">${b.abv != null ? b.abv.toFixed(1) + '%' : ''}</td>
         <td class="num">${b.ibu != null ? Math.round(b.ibu) : ''}</td>
-        <td><span class="pill">${esc(b.status)}</span></td>
-        <td class="num">${fmt(b.brewDate)}</td>
+        <td><span class="pill">${esc(b.custom ? 'Custom' : b.status)}</span></td>
+        <td class="num">${b.custom ? '' : fmt(b.brewDate)}</td>
       </tr>`;
     }).join('');
   }
@@ -197,6 +217,44 @@
   });
 
   $('refreshBatches').addEventListener('click', () => loadBatches(true));
+
+  // ---- Custom items ----
+  async function loadCustom() {
+    try {
+      const { custom, kinds } = await api('/api/custom');
+      if (!$('cKind').options.length) {
+        $('cKind').innerHTML = Object.entries(kinds).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join('');
+      }
+      $('customList').innerHTML = custom.length
+        ? custom.map((c) => `<div class="device" data-id="${esc(c.id)}">
+            <div><strong>${esc(c.name)}</strong> <span class="muted">${esc(kinds[c.kind]?.label || c.kind)}${c.style ? ' · ' + esc(c.style) : ''}${c.abv != null ? ' · ' + c.abv + '%' : ''}${c.calories != null ? ' · ' + Math.round(c.calories) + ' cal' : ''}${c.carbs != null ? ' · ' + c.carbs + ' g carbs' : ''}</span></div>
+            <div class="row"><button class="delCustom">Remove</button></div>
+          </div>`).join('')
+        : '<span class="muted">Nothing added yet.</span>';
+    } catch (err) { msg('customMsg', err.message, 'err'); }
+  }
+  $('addCustom').addEventListener('click', async () => {
+    const body = {
+      kind: $('cKind').value, name: $('cName').value, style: $('cStyle').value,
+      abv: $('cAbv').value, ibu: $('cIbu').value, calories: $('cCal').value, carbs: $('cCarbs').value, notes: $('cNotes').value,
+    };
+    try {
+      const r = await api('/api/custom', { method: 'POST', body: JSON.stringify(body) });
+      msg('customMsg', `Added ${r.item.name}. Tick it in the tap list above and save.`, 'ok');
+      for (const id of ['cName', 'cStyle', 'cAbv', 'cIbu', 'cCal', 'cCarbs', 'cNotes']) $(id).value = '';
+      await loadCustom(); await loadBatches();
+    } catch (err) { msg('customMsg', err.message, 'err'); }
+  });
+  $('customList').addEventListener('click', async (e) => {
+    if (!e.target.classList.contains('delCustom')) return;
+    const id = e.target.closest('.device').dataset.id;
+    try {
+      await api('/api/custom/' + encodeURIComponent(id), { method: 'DELETE' });
+      msg('customMsg', 'Removed.', 'ok');
+      await loadCustom(); await loadBatches();
+    } catch (err) { msg('customMsg', err.message, 'err'); }
+  });
+  loadCustom();
 
   // ---- Spare tile ----
   async function loadExtra() {

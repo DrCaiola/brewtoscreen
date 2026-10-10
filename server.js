@@ -27,9 +27,17 @@ const brewfather = new BrewfatherClient({
 //   categories: Open Trivia DB category ids; empty = any category.
 const DEFAULT_EXTRA = { mode: 'info', breweryName: '', leagues: ['nfl', 'mlb'], trivia: true, categories: [], seconds: 12 };
 // tapCount + showAll: always draw this many tap slots; unassigned ones show as "Kicked".
+// custom: things that are not in Brewfather (seltzer, hopped tea...). Same shape as a batch.
 let state = {
-  title: 'On Tap', taps: [], tapCount: 7, showAll: true,
+  title: 'On Tap', taps: [], tapCount: 7, showAll: true, custom: [],
   lastCast: null, defaultDevice: null, extra: { ...DEFAULT_EXTRA },
+};
+
+const CUSTOM_KINDS = {
+  seltzer: { label: 'Hard seltzer', style: 'Hard Seltzer', srm: 0 },
+  tea: { label: 'Hopped tea', style: 'Hopped Tea', srm: 9 },
+  cider: { label: 'Cider', style: 'Cider', srm: 3 },
+  other: { label: 'Other', style: '', srm: 5 },
 };
 
 async function loadState() {
@@ -46,9 +54,10 @@ async function saveState() {
 }
 
 async function getBatches(force = false) {
-  if (!brewfather.configured) return { batches: SAMPLE_BATCHES, source: 'sample' };
+  const custom = state.custom.map((c) => ({ ...c, status: 'Custom', custom: true }));
+  if (!brewfather.configured) return { batches: [...custom, ...SAMPLE_BATCHES], source: 'sample' };
   const batches = await brewfather.batches({ force });
-  return { batches, source: 'brewfather', cacheAgeMs: brewfather.cacheAge() };
+  return { batches: [...custom, ...batches], source: 'brewfather', cacheAgeMs: brewfather.cacheAge() };
 }
 
 // Join tap assignments with batch data for the public display.
@@ -128,6 +137,42 @@ app.put('/api/taps', wrap(async (req, res) => {
   if (showAll !== undefined) state.showAll = Boolean(showAll);
   await saveState();
   res.json({ ok: true, taps: state.taps, title: state.title, tapCount: state.tapCount, showAll: state.showAll });
+}));
+
+// Custom (non-Brewfather) items.
+app.get('/api/custom', (req, res) => res.json({ custom: state.custom, kinds: CUSTOM_KINDS }));
+
+app.post('/api/custom', wrap(async (req, res) => {
+  const b = req.body ?? {};
+  const kind = CUSTOM_KINDS[b.kind] ? b.kind : 'other';
+  const name = String(b.name ?? '').trim().slice(0, 60);
+  if (!name) return res.status(400).json({ error: 'name is required' });
+  const num = (v, d = null) => (v === '' || v === undefined || v === null || Number.isNaN(Number(v)) ? d : Number(v));
+  const item = {
+    id: b.id && state.custom.some((c) => c.id === b.id) ? b.id : `custom-${Date.now().toString(36)}`,
+    kind,
+    name,
+    style: String(b.style ?? CUSTOM_KINDS[kind].style).trim().slice(0, 60) || null,
+    abv: num(b.abv),
+    ibu: num(b.ibu),
+    calories: num(b.calories),
+    carbs: num(b.carbs),
+    srm: num(b.srm, CUSTOM_KINDS[kind].srm),
+    notes: String(b.notes ?? '').trim().slice(0, 120) || null,
+    addedAt: Date.now(),
+  };
+  const idx = state.custom.findIndex((c) => c.id === item.id);
+  if (idx >= 0) state.custom[idx] = { ...state.custom[idx], ...item };
+  else state.custom.unshift(item);
+  await saveState();
+  res.json({ ok: true, item });
+}));
+
+app.delete('/api/custom/:id', wrap(async (req, res) => {
+  state.custom = state.custom.filter((c) => c.id !== req.params.id);
+  state.taps = state.taps.filter((t) => t.batchId !== req.params.id);
+  await saveState();
+  res.json({ ok: true });
 }));
 
 // Spare-tile settings and content.

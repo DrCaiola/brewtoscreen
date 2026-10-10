@@ -189,15 +189,45 @@
     return { cols: 2, scale: 0.8 };   // 7-8 cards: two columns of four
   }
 
-  // Empty glass for a kicked tap: outline only, a bit of foam residue.
+  // Empty glass for a kicked tap: outline only, foam residue, and a sad face.
   function emptyGlassSvg() {
     return `
       <svg class="glass" viewBox="0 0 64 100" aria-hidden="true">
         <path d="M10 12 L54 12 L49.5 90 Q49 96 43 96 L21 96 Q15 96 14.5 90 Z" fill="rgba(255,255,255,.04)" stroke="rgba(255,255,255,.28)" stroke-width="2.5" stroke-linejoin="round"/>
         <path d="M15.6 82 L48.4 82 L48 90 Q47.5 95 43 95 L21 95 Q16.5 95 16 90 Z" fill="rgba(255,255,255,.08)"/>
-        <path d="M19 28 L17.5 80" stroke="rgba(255,255,255,.14)" stroke-width="3.5" stroke-linecap="round"/>
         <path d="M14 18 Q20 24 26 18 M36 16 Q42 22 48 17" fill="none" stroke="rgba(255,246,224,.35)" stroke-width="3" stroke-linecap="round"/>
+        <!-- sad face -->
+        <circle cx="24" cy="44" r="3.2" fill="rgba(255,255,255,.55)"/>
+        <circle cx="40" cy="44" r="3.2" fill="rgba(255,255,255,.55)"/>
+        <path d="M22 66 Q32 56 42 66" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="3.5" stroke-linecap="round"/>
+        <path d="M44 50 Q46 56 44 60" fill="none" stroke="rgba(150,200,255,.6)" stroke-width="2.5" stroke-linecap="round"/>
       </svg>`;
+  }
+
+  // Non-beer items get their own glassware.
+  function customGlassSvg(b) {
+    if (b.kind === 'seltzer') {
+      // Tall clear glass, faint fizz, lime wedge.
+      return `
+        <svg class="glass" viewBox="0 0 64 100" aria-hidden="true">
+          <path d="M13 18 L51 18 L48 90 Q47.5 95 43 95 L21 95 Q16.5 95 16 90 Z" fill="rgba(200,235,245,.28)"/>
+          <path d="M10 12 L54 12 L49.5 90 Q49 96 43 96 L21 96 Q15 96 14.5 90 Z" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="2.5" stroke-linejoin="round"/>
+          <path d="M19 28 L17.5 80" stroke="rgba(255,255,255,.35)" stroke-width="3.5" stroke-linecap="round"/>
+          <g fill="rgba(255,255,255,.55)"><circle cx="26" cy="70" r="2"/><circle cx="36" cy="58" r="1.6"/><circle cx="30" cy="42" r="1.4"/><circle cx="41" cy="78" r="1.8"/><circle cx="24" cy="54" r="1.2"/><circle cx="38" cy="32" r="1.3"/></g>
+          <path d="M50 10 A12 12 0 0 1 62 22 L50 22 Z" fill="#9bd36a" stroke="#d9f2b0" stroke-width="2"/>
+        </svg>`;
+    }
+    if (b.kind === 'tea') {
+      // Amber tea, no head, a couple of hop-leaf flecks.
+      return `
+        <svg class="glass" viewBox="0 0 64 100" aria-hidden="true">
+          <path d="M12 20 L52 20 L48.5 90 Q48 95 43 95 L21 95 Q16 95 15.5 90 Z" fill="${srmToHex(b.srm ?? 9)}" opacity=".92"/>
+          <path d="M10 12 L54 12 L49.5 90 Q49 96 43 96 L21 96 Q15 96 14.5 90 Z" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="2.5" stroke-linejoin="round"/>
+          <path d="M19 28 L17.5 80" stroke="rgba(255,255,255,.3)" stroke-width="3.5" stroke-linecap="round"/>
+          <path d="M28 48 q6 -6 12 0 q-6 6 -12 0 Z M34 66 q6 -6 12 0 q-6 6 -12 0 Z" fill="#8fbf5a" opacity=".85"/>
+        </svg>`;
+    }
+    return glassSvg(b.srm ?? 5);
   }
 
   function tapCard({ tap, label, beer: b }) {
@@ -214,20 +244,20 @@
     const stats = [
       b.abv != null && `<div class="stat"><b>${b.abv.toFixed(1)}%</b><span>ABV</span></div>`,
       b.ibu != null && `<div class="stat"><b>${Math.round(b.ibu)}</b><span>IBU</span></div>`,
-      b.og != null && `<div class="stat"><b>${b.og.toFixed(3)}</b><span>OG</span></div>`,
-      b.fg != null && `<div class="stat"><b>${b.fg.toFixed(3)}</b><span>FG</span></div>`,
-      b.srm != null && `<div class="stat"><b>${Math.round(b.srm)}</b><span>SRM</span></div>`,
+      b.calories != null && `<div class="stat"><b>${Math.round(b.calories)}</b><span>Cal</span></div>`,
+      b.carbs != null && `<div class="stat"><b>${b.carbs < 10 ? b.carbs.toFixed(1) : Math.round(b.carbs)}g</b><span>Carbs</span></div>`,
     ].filter(Boolean).join('');
     const meta = [
       b.batchNo != null && `Batch #${b.batchNo}`,
       b.bottlingDate && `Kegged ${fmtDate(b.bottlingDate)}`,
       !b.bottlingDate && b.brewDate && `Brewed ${fmtDate(b.brewDate)}`,
+      b.custom && b.notes && esc(b.notes),
       label && esc(label),
     ].filter(Boolean).join(' · ');
     return `
       <article class="tap">
         <div class="num">${tap}</div>
-        ${glassSvg(b.srm)}
+        ${b.custom ? customGlassSvg(b) : glassSvg(b.srm)}
         <div class="name" title="${esc(b.name)}">${esc(b.name)}</div>
         <div class="style">${esc(b.style || b.type || '')}</div>
         <div class="bottom">
