@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BrewfatherClient, SAMPLE_BATCHES } from './lib/brewfather.js';
 import { discoverDevices, castUrl, stopCasting, deviceStatus } from './lib/cast.js';
+import { getScores, getTrivia, BEER_FACTS, LEAGUE_OPTIONS } from './lib/extras.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
@@ -21,7 +22,10 @@ const brewfather = new BrewfatherClient({
 // ---- tap state (persisted to data/taps.json) --------------------------------
 // { title: string, taps: [{ tap: number, batchId: string, label?: string }], lastCast: {...} }
 
-let state = { title: 'On Tap', taps: [], lastCast: null, defaultDevice: null };
+// extra: what goes in the spare tile when the tap count is odd.
+//   mode: 'info' (rotating scores/trivia/facts, bottom-right) | 'brewery' (name tile, top-left) | 'none'
+const DEFAULT_EXTRA = { mode: 'info', breweryName: '', leagues: ['nfl', 'mlb'], trivia: true, facts: true, seconds: 12 };
+let state = { title: 'On Tap', taps: [], lastCast: null, defaultDevice: null, extra: { ...DEFAULT_EXTRA } };
 
 async function loadState() {
   try {
@@ -51,7 +55,7 @@ async function tapList() {
     .sort((a, b) => a.tap - b.tap)
     .map((t) => ({ tap: t.tap, label: t.label || null, beer: byId.get(t.batchId) ?? null }))
     .filter((t) => t.beer);
-  return { title: state.title, taps, source, updatedAt: Date.now() };
+  return { title: state.title, taps, extra: state.extra, source, updatedAt: Date.now() };
 }
 
 function lanAddress() {
@@ -110,6 +114,33 @@ app.put('/api/taps', wrap(async (req, res) => {
   if (typeof title === 'string') state.title = title.slice(0, 80);
   await saveState();
   res.json({ ok: true, taps: state.taps, title: state.title });
+}));
+
+// Spare-tile settings and content.
+app.get('/api/extra', (req, res) => res.json({ extra: state.extra, leagues: LEAGUE_OPTIONS }));
+
+app.put('/api/extra', wrap(async (req, res) => {
+  const b = req.body ?? {};
+  const mode = ['info', 'brewery', 'none'].includes(b.mode) ? b.mode : state.extra.mode;
+  state.extra = {
+    mode,
+    breweryName: typeof b.breweryName === 'string' ? b.breweryName.slice(0, 60) : state.extra.breweryName,
+    leagues: Array.isArray(b.leagues) ? b.leagues.filter((l) => LEAGUE_OPTIONS.some((o) => o.key === l)) : state.extra.leagues,
+    trivia: b.trivia === undefined ? state.extra.trivia : Boolean(b.trivia),
+    facts: b.facts === undefined ? state.extra.facts : Boolean(b.facts),
+    seconds: Math.min(60, Math.max(5, Number(b.seconds) || state.extra.seconds)),
+  };
+  await saveState();
+  res.json({ ok: true, extra: state.extra });
+}));
+
+app.get('/api/extra/content', wrap(async (req, res) => {
+  const e = state.extra;
+  const [scores, trivia] = await Promise.all([
+    e.leagues.length ? getScores(e.leagues) : [],
+    e.trivia ? getTrivia() : [],
+  ]);
+  res.json({ scores, trivia: trivia ?? [], facts: e.facts ? BEER_FACTS : [], seconds: e.seconds });
 }));
 
 // Chromecast.

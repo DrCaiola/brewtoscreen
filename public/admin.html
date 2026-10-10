@@ -61,6 +61,27 @@
   </section>
 
   <section>
+    <h2>Spare tile</h2>
+    <p class="muted">With an odd number of taps there is one empty slot on the board. Choose what fills it.</p>
+    <div class="row">
+      <label><input type="radio" name="xmode" value="info"> Rotating info, bottom-right (scores, trivia, beer facts)</label>
+      <label><input type="radio" name="xmode" value="brewery"> Brewery name tile, top-left</label>
+      <label><input type="radio" name="xmode" value="none"> Leave it empty</label>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <label>Brewery name <input type="text" id="breweryName" placeholder="Finniak Brewing" maxlength="60"></label>
+    </div>
+    <div class="row" style="margin-top:10px" id="leagues"></div>
+    <div class="row" style="margin-top:10px">
+      <label><input type="checkbox" id="xtrivia"> Trivia</label>
+      <label><input type="checkbox" id="xfacts"> Beer facts</label>
+      <label>Seconds per slide <input type="number" id="xseconds" min="5" max="60"></label>
+      <button class="primary" id="saveExtra">Save spare tile</button>
+    </div>
+    <div class="msg" id="extraMsg"></div>
+  </section>
+
+  <section>
     <h2>Chromecast</h2>
     <p class="muted">The TV will load <code id="displayUrl">…</code>. The Chromecast has to be able to reach this computer on your network.</p>
     <p class="muted" id="defaultTv"></p>
@@ -165,6 +186,35 @@
   });
 
   $('refreshBatches').addEventListener('click', () => loadBatches(true));
+
+  // ---- Spare tile ----
+  async function loadExtra() {
+    try {
+      const { extra, leagues } = await api('/api/extra');
+      document.querySelector(`input[name=xmode][value=${extra.mode}]`).checked = true;
+      $('breweryName').value = extra.breweryName || '';
+      $('leagues').innerHTML = '<span class="muted">Scores:</span> ' + leagues.map((l) =>
+        `<label><input type="checkbox" class="lg" value="${l.key}" ${extra.leagues.includes(l.key) ? 'checked' : ''}> ${esc(l.label)}</label>`).join(' ');
+      $('xtrivia').checked = extra.trivia;
+      $('xfacts').checked = extra.facts;
+      $('xseconds').value = extra.seconds;
+    } catch (err) { msg('extraMsg', err.message, 'err'); }
+  }
+  $('saveExtra').addEventListener('click', async () => {
+    const body = {
+      mode: document.querySelector('input[name=xmode]:checked')?.value,
+      breweryName: $('breweryName').value,
+      leagues: [...document.querySelectorAll('.lg:checked')].map((c) => c.value),
+      trivia: $('xtrivia').checked,
+      facts: $('xfacts').checked,
+      seconds: Number($('xseconds').value),
+    };
+    try {
+      await api('/api/extra', { method: 'PUT', body: JSON.stringify(body) });
+      msg('extraMsg', 'Saved. The board picks it up within a minute.', 'ok');
+    } catch (err) { msg('extraMsg', err.message, 'err'); }
+  });
+  loadExtra();
 
   // ---- Chromecast ----
   let defaultDevice = null;

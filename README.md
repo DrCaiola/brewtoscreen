@@ -60,6 +60,20 @@ Things to know:
   address or give the computer a DHCP reservation on your router.
 - Casting ends if someone casts something else to the TV. Just cast again.
 
+## The spare tile
+
+With an odd number of taps one slot on the board is empty. On the admin page
+you can fill it with:
+
+- **Rotating info** (bottom-right): live scores for the leagues you tick
+  (ESPN's public scoreboard feed), trivia questions that reveal the answer on
+  the next slide (Open Trivia DB), and a built-in list of beer facts.
+- **Brewery tile** (top-left): your brewery name in big type.
+- Nothing.
+
+Scores are cached for a minute and trivia for half an hour, so the TV polling
+does not hammer anyone's servers.
+
 ## One button to put it on the TV
 
 On the admin page, scan and click **Make default** next to your TV. Then any
@@ -80,10 +94,24 @@ of these casts the board:
 A Chromecast can only be driven from a device on the same network, so some
 box on your LAN has to run this. It does not have to be your desktop:
 
-- **Raspberry Pi (recommended).** Any Pi, even a Zero 2 W, runs this fine.
-  Install Node, clone the repo, `npm install`, copy `.env`, and run it as a
-  service (`pm2` or a systemd unit) so it starts on boot. With
-  `CAST_ON_START=true` the TV comes up whenever the Pi does.
+- **A small Linux board (recommended).** A Raspberry Pi Zero 2 W, an Orange
+  Pi Zero 2W, or anything similar running Debian, Ubuntu or Armbian on arm64
+  runs this comfortably; it idles at a few megabytes of RAM and does nothing
+  until you cast. Setup:
+
+  ```bash
+  git clone <your repo url> ~/brewtoscreen
+  cd ~/brewtoscreen
+  bash deploy/install-pi.sh
+  nano .env     # add Brewfather credentials, set CAST_ON_START=true if you like
+  sudo systemctl restart brewtoscreen@$USER
+  ```
+
+  The install script installs Node 22 if needed, installs dependencies, and
+  registers a systemd service (`deploy/brewtoscreen.service`) so it starts on
+  boot and restarts if it crashes. The board must be on the same Wi-Fi as the
+  Chromecast. Give it a DHCP reservation on your router so its address, and
+  therefore the URL the TV loads, never changes.
 - **GitHub Pages for the guest page.** The board for guests can live on GitHub
   Pages: a scheduled GitHub Action pulls Brewfather and writes `taps.json`
   into the repo, and the static page reads that. The LAN box is then only

@@ -40,19 +40,21 @@
     /* minmax(0, …) so rows never grow past the screen; cards clip instead. */
     grid-auto-rows: minmax(0, 1fr);
   }
-  .tap {
+  .tap, .tile {
     --fs: var(--scale, 1);
     background: linear-gradient(180deg, var(--panel-2), var(--panel));
     border: 1px solid var(--line);
     border-radius: var(--radius);
     padding: calc(clamp(12px, 1.4vw, 24px) * var(--fs));
+    min-height: 0; overflow: hidden;
+  }
+  .tap {
     display: grid;
     grid-template-columns: auto auto 1fr;
     grid-template-rows: auto auto 1fr;
     column-gap: clamp(10px, 1.2vw, 20px);
     row-gap: clamp(4px, 0.6vh, 10px);
     align-items: start;
-    min-height: 0; overflow: hidden;
   }
   .num {
     grid-row: 1 / span 3;
@@ -66,7 +68,6 @@
     grid-row: 1 / span 3;
     height: calc(clamp(56px, 7.2vw, 128px) * var(--fs));
     width: auto;
-    filter: drop-shadow(0 4px 10px rgba(0,0,0,.45));
   }
   .name {
     font-size: calc(clamp(20px, 2.5vw, 44px) * var(--fs));
@@ -87,11 +88,37 @@
   footer { color: var(--muted); font-size: clamp(11px, 0.9vw, 15px); display: flex; justify-content: space-between; }
   .err { color: #ff8a80; }
 
+  /* ---- spare tile ---- */
+  .tile { display: flex; flex-direction: column; min-width: 0; }
+  .tile.brewery { align-items: center; justify-content: center; text-align: center; gap: 0.3em;
+    background: linear-gradient(160deg, #2a2213, var(--panel)); border-color: #4a3a18; }
+  .tile.brewery .bname { font-size: calc(clamp(24px, 3.2vw, 56px) * var(--fs)); font-weight: 800; line-height: 1.05; color: var(--accent); }
+  .tile.brewery .bsub { color: var(--muted); font-size: calc(clamp(13px, 1.3vw, 22px) * var(--fs)); letter-spacing: 0.12em; text-transform: uppercase; }
+  .tile.info { gap: calc(clamp(6px, 0.8vh, 12px) * var(--fs)); }
+  .tile .kicker { color: var(--accent); font-size: calc(clamp(11px, 1vw, 16px) * var(--fs)); text-transform: uppercase; letter-spacing: 0.14em; font-weight: 600; display: flex; justify-content: space-between; }
+  .tile .kicker span:last-child { color: var(--muted); font-weight: 400; letter-spacing: 0.04em; text-transform: none; }
+  .tile .body { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: calc(clamp(4px, 0.6vh, 10px) * var(--fs)); }
+  .tile.fade .body { animation: fadein .5s ease; }
+  @keyframes fadein { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .game { display: grid; grid-template-columns: 1fr auto auto; align-items: center; column-gap: 0.8em;
+    font-size: calc(clamp(14px, 1.7vw, 30px) * var(--fs)); line-height: 1.3; }
+  .game .teams { display: flex; align-items: center; gap: 0.45em; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .game img { height: 1.15em; width: 1.15em; object-fit: contain; }
+  .game .score { font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
+  .game .status { color: var(--muted); font-size: 0.8em; white-space: nowrap; min-width: 4.5em; text-align: right; }
+  .game.live .status { color: #ff6b6b; font-weight: 600; }
+  .game .win { color: var(--text); } .game .lose { color: var(--muted); }
+  .q { font-size: calc(clamp(15px, 1.55vw, 26px) * var(--fs)); font-weight: 600; line-height: 1.25; }
+  .choices { display: grid; grid-template-columns: 1fr 1fr; gap: 0.35em 1em; color: var(--muted); font-size: calc(clamp(12px, 1.2vw, 20px) * var(--fs)); }
+  .choices .right { color: #7ee2a0; font-weight: 700; }
+  .fact { font-size: calc(clamp(15px, 1.6vw, 27px) * var(--fs)); line-height: 1.3; }
+
   /* Phone: single column, scrollable. */
   @media (max-width: 700px) {
     body { overflow: auto; height: auto; min-height: 100%; --safe: 0px; }
     main { grid-template-columns: 1fr !important; grid-auto-rows: auto; }
-    .tap { --fs: 1; }
+    .tap, .tile { --fs: 1; }
+    .tile.info { min-height: 160px; }
     .name { white-space: normal; }
   }
 </style>
@@ -123,26 +150,13 @@
     return hex;
   }
 
-  // A pint glass filled with the beer's colour, with a head of foam.
+  // Flat pint glass: solid beer colour, flat white head, no shading.
   function glassSvg(srm) {
     const beer = srmToHex(srm);
     return `
       <svg class="glass" viewBox="0 0 64 100" aria-hidden="true">
-        <defs>
-          <linearGradient id="g${srm}" x1="0" x2="1">
-            <stop offset="0" stop-color="${beer}" stop-opacity=".85"/>
-            <stop offset=".45" stop-color="${beer}"/>
-            <stop offset="1" stop-color="#000" stop-opacity=".35"/>
-          </linearGradient>
-        </defs>
-        <!-- beer -->
-        <path d="M11 22 L53 22 L49 92 Q48 96 44 96 L20 96 Q16 96 15 92 Z" fill="url(#g${srm})"/>
-        <!-- glass outline + highlight -->
-        <path d="M9 12 L55 12 L50 92 Q49 97 44 97 L20 97 Q15 97 14 92 Z" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="3"/>
-        <path d="M18 28 L16 86" stroke="rgba(255,255,255,.35)" stroke-width="3" stroke-linecap="round"/>
-        <!-- foam -->
-        <path d="M8 16 Q8 4 18 7 Q22 -1 32 3 Q42 -2 46 6 Q56 3 56 14 Q58 22 50 23 L13 23 Q6 23 8 16 Z" fill="#fff8e6"/>
-        <path d="M13 23 Q22 29 32 23 Q42 29 50 23" fill="none" stroke="#f1e8d2" stroke-width="2"/>
+        <path d="M11 18 L53 18 L49 92 Q48 96 44 96 L20 96 Q16 96 15 92 Z" fill="${beer}"/>
+        <rect x="9" y="4" width="46" height="16" rx="3" fill="#fff8e6"/>
       </svg>`;
   }
 
@@ -151,7 +165,7 @@
     return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   }
 
-  function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+  function esc(s) { return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
   // Columns and a text scale, tuned for a 16:9 TV.
   function layout(n) {
@@ -159,47 +173,146 @@
     if (n <= 2) return { cols: 2, scale: 1.1 };
     if (n <= 4) return { cols: 2, scale: 1 };
     if (n <= 6) return { cols: 2, scale: 0.92 };
-    return { cols: 2, scale: 0.8 };   // 7-8 taps: two columns of four
+    return { cols: 2, scale: 0.8 };   // 7-8 cards: two columns of four
   }
+
+  function tapCard({ tap, label, beer: b }) {
+    const stats = [
+      b.abv != null && `<div class="stat"><b>${b.abv.toFixed(1)}%</b><span>ABV</span></div>`,
+      b.ibu != null && `<div class="stat"><b>${Math.round(b.ibu)}</b><span>IBU</span></div>`,
+      b.og != null && `<div class="stat"><b>${b.og.toFixed(3)}</b><span>OG</span></div>`,
+      b.fg != null && `<div class="stat"><b>${b.fg.toFixed(3)}</b><span>FG</span></div>`,
+      b.srm != null && `<div class="stat"><b>${Math.round(b.srm)}</b><span>SRM</span></div>`,
+    ].filter(Boolean).join('');
+    const meta = [
+      b.batchNo != null && `Batch #${b.batchNo}`,
+      b.bottlingDate && `Kegged ${fmtDate(b.bottlingDate)}`,
+      !b.bottlingDate && b.brewDate && `Brewed ${fmtDate(b.brewDate)}`,
+      label && esc(label),
+    ].filter(Boolean).join(' · ');
+    return `
+      <article class="tap">
+        <div class="num">${tap}</div>
+        ${glassSvg(b.srm)}
+        <div class="name" title="${esc(b.name)}">${esc(b.name)}</div>
+        <div class="style">${esc(b.style || b.type || '')}</div>
+        <div class="bottom">
+          <div class="stats">${stats}</div>
+          <div class="meta">${meta}</div>
+        </div>
+      </article>`;
+  }
+
+  let extra = { mode: 'none' };
 
   function render(data) {
     document.getElementById('title').textContent = data.title || 'On Tap';
     document.title = data.title || 'On Tap';
+    extra = data.extra || { mode: 'none' };
     const main = document.getElementById('taps');
     const taps = data.taps || [];
-    const { cols, scale } = layout(taps.length);
-    main.style.setProperty('--cols', cols);
-    main.style.setProperty('--scale', scale);
     if (!taps.length) {
+      main.style.setProperty('--cols', 1);
       main.innerHTML = '<div class="empty">Nothing on tap right now.<br>Pick some batches on the admin page.</div>';
+      stopRotation();
       return;
     }
-    main.innerHTML = taps.map(({ tap, label, beer: b }) => {
-      const stats = [
-        b.abv != null && `<div class="stat"><b>${b.abv.toFixed(1)}%</b><span>ABV</span></div>`,
-        b.ibu != null && `<div class="stat"><b>${Math.round(b.ibu)}</b><span>IBU</span></div>`,
-        b.og != null && `<div class="stat"><b>${b.og.toFixed(3)}</b><span>OG</span></div>`,
-        b.fg != null && `<div class="stat"><b>${b.fg.toFixed(3)}</b><span>FG</span></div>`,
-        b.srm != null && `<div class="stat"><b>${Math.round(b.srm)}</b><span>SRM</span></div>`,
-      ].filter(Boolean).join('');
-      const meta = [
-        b.batchNo != null && `Batch #${b.batchNo}`,
-        b.bottlingDate && `Kegged ${fmtDate(b.bottlingDate)}`,
-        !b.bottlingDate && b.brewDate && `Brewed ${fmtDate(b.brewDate)}`,
-        label && esc(label),
-      ].filter(Boolean).join(' · ');
-      return `
-        <article class="tap">
-          <div class="num">${tap}</div>
-          ${glassSvg(b.srm)}
-          <div class="name" title="${esc(b.name)}">${esc(b.name)}</div>
-          <div class="style">${esc(b.style || b.type || '')}</div>
-          <div class="bottom">
-            <div class="stats">${stats}</div>
-            <div class="meta">${meta}</div>
-          </div>
-        </article>`;
-    }).join('');
+    const spare = taps.length % 2 === 1 && extra.mode !== 'none';
+    const { cols, scale } = layout(taps.length + (spare ? 1 : 0));
+    main.style.setProperty('--cols', cols);
+    main.style.setProperty('--scale', scale);
+
+    const cards = taps.map(tapCard);
+    if (spare && extra.mode === 'brewery') {
+      cards.unshift(`<div class="tile brewery"><div class="bname">${esc(extra.breweryName || data.title)}</div><div class="bsub">Est. in the garage</div></div>`);
+    } else if (spare && extra.mode === 'info') {
+      cards.push(`<div class="tile info" id="infoTile"><div class="kicker"><span>Loading…</span><span></span></div><div class="body"></div></div>`);
+    }
+    main.innerHTML = cards.join('');
+    if (spare && extra.mode === 'info') startRotation(); else stopRotation();
+  }
+
+  // ---- rotating info tile ----
+  let slides = [], slideIdx = 0, rotTimer = null, contentTimer = null;
+
+  function gameRow(g) {
+    const live = g.state === 'in';
+    const done = g.state === 'post';
+    const cls = (t) => (done ? (t.winner ? 'win' : 'lose') : '');
+    const team = (t) => `<span class="${cls(t)}">${t.logo ? `<img src="${esc(t.logo)}" alt="">` : ''}${esc(t.abbr || t.name)}</span>`;
+    const score = g.state === 'pre' ? '' : `<span class="${cls(g.away)}">${esc(g.away.score)}</span>&nbsp;-&nbsp;<span class="${cls(g.home)}">${esc(g.home.score)}</span>`;
+    return `<div class="game ${live ? 'live' : ''}">
+      <div class="teams">${team(g.away)} <span style="color:var(--muted)">@</span> ${team(g.home)}</div>
+      <div class="score">${score}</div>
+      <div class="status">${esc(g.detail)}</div>
+    </div>`;
+  }
+
+  function buildSlides(c) {
+    const out = [];
+    for (const lg of c.scores || []) {
+      if (!lg.games.length) continue;
+      const anyLive = lg.games.some((g) => g.state === 'in');
+      out.push({ kicker: lg.label, note: anyLive ? 'Live' : '', html: lg.games.slice(0, 4).map(gameRow).join('') });
+    }
+    const trivia = (c.trivia || []).slice();
+    const facts = (c.facts || []).slice();
+    // Interleave so it does not feel like a block of one thing.
+    const n = Math.max(trivia.length, facts.length);
+    for (let i = 0; i < n; i++) {
+      if (trivia[i]) {
+        const q = trivia[i];
+        const choices = (mark) => `<div class="choices">${q.choices.map((ch) => `<span class="${mark && ch === q.answer ? 'right' : ''}">${mark && ch === q.answer ? '✓ ' : ''}${esc(ch)}</span>`).join('')}</div>`;
+        out.push({ kicker: 'Trivia', note: q.category, html: `<div class="q">${esc(q.question)}</div>${choices(false)}` });
+        out.push({ kicker: 'Trivia', note: 'Answer', html: `<div class="q">${esc(q.question)}</div>${choices(true)}` });
+      }
+      if (facts[i]) out.push({ kicker: 'Beer fact', note: '', html: `<div class="fact">${esc(facts[i])}</div>` });
+    }
+    return out;
+  }
+
+  function showSlide() {
+    const tile = document.getElementById('infoTile');
+    if (!tile || !slides.length) return;
+    const s = slides[slideIdx % slides.length];
+    tile.classList.remove('fade'); void tile.offsetWidth; tile.classList.add('fade');
+    tile.innerHTML = `<div class="kicker"><span>${esc(s.kicker)}</span><span>${esc(s.note)}</span></div><div class="body">${s.html}</div>`;
+    slideIdx++;
+  }
+
+  async function loadContent() {
+    try {
+      const res = await fetch('/api/extra/content', { cache: 'no-store' });
+      const c = await res.json();
+      const fresh = buildSlides(c);
+      if (fresh.length) {
+        // Shuffle lightly so facts/trivia vary between loads, but keep scores first.
+        const scoresN = (c.scores || []).filter((l) => l.games.length).length;
+        const rest = fresh.slice(scoresN);
+        for (let i = rest.length - 1; i > 0; i -= 2) { const j = Math.floor(Math.random() * (i + 1)); if ((i % 2) === (j % 2)) [rest[i], rest[j]] = [rest[j], rest[i]]; }
+        slides = fresh.slice(0, scoresN).concat(rest);
+      }
+      if (slides.length && !rotTimer) {
+        showSlide();
+        rotTimer = setInterval(showSlide, (c.seconds || 12) * 1000);
+      }
+    } catch (err) {
+      const tile = document.getElementById('infoTile');
+      if (tile && !slides.length) tile.innerHTML = `<div class="kicker"><span>Info</span></div><div class="body fact">Nothing to show yet.</div>`;
+    }
+  }
+
+  function startRotation() {
+    if (!contentTimer) {
+      loadContent();
+      contentTimer = setInterval(loadContent, 120_000);
+    } else if (slides.length) {
+      showSlide();
+    }
+  }
+  function stopRotation() {
+    clearInterval(rotTimer); clearInterval(contentTimer);
+    rotTimer = contentTimer = null; slides = [];
   }
 
   async function refresh() {
