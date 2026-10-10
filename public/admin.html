@@ -66,7 +66,7 @@
 
   <section>
     <h2>Not in Brewfather</h2>
-    <p class="muted">Seltzer, hopped tea, cider, anything else on a tap. These show up in the tap list above like any batch. Calories and carbs are per 12 oz.</p>
+    <p class="muted">Seltzer, hopped tea, cider, anything else on a tap. These show up in the tap list above like any batch. Calories and carbs are per pint (16 oz).</p>
     <div class="row">
       <label>Type <select id="cKind"></select></label>
       <label>Name <input type="text" id="cName" placeholder="Lime Seltzer" maxlength="60"></label>
@@ -78,7 +78,9 @@
       <label>Calories <input type="number" id="cCal" step="1" min="0"></label>
       <label>Carbs g <input type="number" id="cCarbs" step="0.1" min="0"></label>
       <label>Note <input type="text" id="cNotes" placeholder="e.g. Citra dry-hopped" maxlength="120" style="width:180px"></label>
+      <input type="hidden" id="cId">
       <button class="primary" id="addCustom">Add</button>
+      <button id="cancelEdit" style="display:none">Cancel</button>
     </div>
     <div id="customList" style="margin-top:12px"></div>
     <div class="msg" id="customMsg"></div>
@@ -219,39 +221,67 @@
   $('refreshBatches').addEventListener('click', () => loadBatches(true));
 
   // ---- Custom items ----
+  let customItems = [];
+  const customFields = ['cName', 'cStyle', 'cAbv', 'cIbu', 'cCal', 'cCarbs', 'cNotes', 'cId'];
+  function fillCustomForm(c) {
+    $('cKind').value = c.kind; $('cName').value = c.name; $('cStyle').value = c.style || '';
+    $('cAbv').value = c.abv ?? ''; $('cIbu').value = c.ibu ?? ''; $('cCal').value = c.calories ?? '';
+    $('cCarbs').value = c.carbs ?? ''; $('cNotes').value = c.notes || '';
+  }
+  function setEditMode(id) {
+    $('cId').value = id || '';
+    $('addCustom').textContent = id ? 'Save changes' : 'Add';
+    $('cancelEdit').style.display = id ? '' : 'none';
+  }
   async function loadCustom() {
     try {
       const { custom, kinds } = await api('/api/custom');
+      customItems = custom;
       if (!$('cKind').options.length) {
         $('cKind').innerHTML = Object.entries(kinds).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join('');
       }
       $('customList').innerHTML = custom.length
         ? custom.map((c) => `<div class="device" data-id="${esc(c.id)}">
             <div><strong>${esc(c.name)}</strong> <span class="muted">${esc(kinds[c.kind]?.label || c.kind)}${c.style ? ' · ' + esc(c.style) : ''}${c.abv != null ? ' · ' + c.abv + '%' : ''}${c.calories != null ? ' · ' + Math.round(c.calories) + ' cal' : ''}${c.carbs != null ? ' · ' + c.carbs + ' g carbs' : ''}</span></div>
-            <div class="row"><button class="delCustom">Remove</button></div>
+            <div class="row"><button class="editCustom">Edit</button><button class="dupCustom">Duplicate</button><button class="delCustom">Remove</button></div>
           </div>`).join('')
         : '<span class="muted">Nothing added yet.</span>';
     } catch (err) { msg('customMsg', err.message, 'err'); }
   }
   $('addCustom').addEventListener('click', async () => {
     const body = {
+      id: $('cId').value || undefined,
       kind: $('cKind').value, name: $('cName').value, style: $('cStyle').value,
       abv: $('cAbv').value, ibu: $('cIbu').value, calories: $('cCal').value, carbs: $('cCarbs').value, notes: $('cNotes').value,
     };
+    const editing = Boolean(body.id);
     try {
       const r = await api('/api/custom', { method: 'POST', body: JSON.stringify(body) });
-      msg('customMsg', `Added ${r.item.name}. Tick it in the tap list above and save.`, 'ok');
-      for (const id of ['cName', 'cStyle', 'cAbv', 'cIbu', 'cCal', 'cCarbs', 'cNotes']) $(id).value = '';
+      msg('customMsg', editing ? `Updated ${r.item.name}.` : `Added ${r.item.name}. Tick it in the tap list above and save.`, 'ok');
+      for (const id of customFields) $(id).value = '';
+      setEditMode('');
       await loadCustom(); await loadBatches();
     } catch (err) { msg('customMsg', err.message, 'err'); }
   });
+  $('cancelEdit').addEventListener('click', () => { for (const id of customFields) $(id).value = ''; setEditMode(''); });
   $('customList').addEventListener('click', async (e) => {
-    if (!e.target.classList.contains('delCustom')) return;
-    const id = e.target.closest('.device').dataset.id;
+    const id = e.target.closest('.device')?.dataset.id; if (!id) return;
+    const item = customItems.find((c) => c.id === id); if (!item) return;
     try {
-      await api('/api/custom/' + encodeURIComponent(id), { method: 'DELETE' });
-      msg('customMsg', 'Removed.', 'ok');
-      await loadCustom(); await loadBatches();
+      if (e.target.classList.contains('editCustom')) {
+        fillCustomForm(item); setEditMode(id);
+        $('cName').focus();
+        msg('customMsg', `Editing ${item.name}. Change the fields above and click Save changes.`, '');
+      } else if (e.target.classList.contains('dupCustom')) {
+        const r = await api('/api/custom', { method: 'POST', body: JSON.stringify({ ...item, id: undefined, name: `${item.name} (copy)` }) });
+        msg('customMsg', `Duplicated as ${r.item.name}.`, 'ok');
+        await loadCustom(); await loadBatches();
+      } else if (e.target.classList.contains('delCustom')) {
+        await api('/api/custom/' + encodeURIComponent(id), { method: 'DELETE' });
+        if ($('cId').value === id) { for (const f of customFields) $(f).value = ''; setEditMode(''); }
+        msg('customMsg', 'Removed.', 'ok');
+        await loadCustom(); await loadBatches();
+      }
     } catch (err) { msg('customMsg', err.message, 'err'); }
   });
   loadCustom();
