@@ -25,7 +25,8 @@ const brewfather = new BrewfatherClient({
 // extra: what goes in the spare tile when the tap count is odd.
 //   mode: 'info' (rotating scores/trivia/facts, bottom-right) | 'brewery' (name tile, top-left) | 'none'
 //   categories: Open Trivia DB category ids; empty = any category.
-const DEFAULT_EXTRA = { mode: 'info', breweryName: '', leagues: ['nfl', 'mlb'], trivia: true, categories: [], seconds: 12 };
+//   scoresEvery: show a scores slide after this many trivia questions.
+const DEFAULT_EXTRA = { mode: 'info', breweryName: '', leagues: ['nfl', 'mlb'], trivia: true, categories: [], seconds: 12, scoresEvery: 2 };
 // tapCount + showAll: always draw this many tap slots; unassigned ones show as "Kicked".
 // custom: things that are not in Brewfather (seltzer, hopped tea...). Same shape as a batch.
 let state = {
@@ -190,6 +191,7 @@ app.put('/api/extra', wrap(async (req, res) => {
     trivia: b.trivia === undefined ? state.extra.trivia : Boolean(b.trivia),
     categories: Array.isArray(b.categories) ? b.categories.map(Number).filter(Boolean).slice(0, 12) : (state.extra.categories ?? []),
     seconds: Math.min(60, Math.max(5, Number(b.seconds) || state.extra.seconds)),
+    scoresEvery: Math.min(20, Math.max(1, Number(b.scoresEvery) || state.extra.scoresEvery || 2)),
   };
   await saveState();
   if (state.extra.trivia) getTrivia(state.extra.categories); // warm the cache in the background
@@ -200,7 +202,7 @@ app.get('/api/extra/content', wrap(async (req, res) => {
   const e = state.extra;
   const scores = e.leagues.length ? await getScores(e.leagues) : [];
   const trivia = e.trivia ? getTrivia(e.categories ?? []) : [];
-  res.json({ scores, trivia, seconds: e.seconds });
+  res.json({ scores, trivia, seconds: e.seconds, scoresEvery: e.scoresEvery ?? 2 });
 }));
 
 // Chromecast.
