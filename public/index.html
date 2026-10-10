@@ -150,13 +150,22 @@
     return hex;
   }
 
-  // Flat pint glass: solid beer colour, flat white head, no shading.
+  // Pint glass: solid beer colour with a glass outline, a thin highlight,
+  // a thicker base and a foam head with a slightly uneven underside.
   function glassSvg(srm) {
     const beer = srmToHex(srm);
     return `
       <svg class="glass" viewBox="0 0 64 100" aria-hidden="true">
-        <path d="M11 18 L53 18 L49 92 Q48 96 44 96 L20 96 Q16 96 15 92 Z" fill="${beer}"/>
-        <rect x="9" y="4" width="46" height="16" rx="3" fill="#fff8e6"/>
+        <!-- beer -->
+        <path d="M11 20 L53 20 L49 90 Q48 95 43 95 L21 95 Q16 95 15 90 Z" fill="${beer}"/>
+        <!-- thick glass base -->
+        <path d="M15.6 82 L48.4 82 L48 90 Q47.5 95 43 95 L21 95 Q16.5 95 16 90 Z" fill="rgba(0,0,0,.28)"/>
+        <!-- highlight down the left side -->
+        <path d="M19 28 L17.5 80" stroke="rgba(255,255,255,.38)" stroke-width="3.5" stroke-linecap="round"/>
+        <!-- glass outline -->
+        <path d="M10 12 L54 12 L49.5 90 Q49 96 43 96 L21 96 Q15 96 14.5 90 Z" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="2.5" stroke-linejoin="round"/>
+        <!-- foam -->
+        <path d="M8 10 Q8 2 16 3 Q22 -1 32 2 Q42 -1 48 3 Q56 2 56 10 L56 17 Q52 22 46 19 Q40 24 32 20 Q24 24 18 19 Q12 22 8 17 Z" fill="#fff6e0"/>
       </svg>`;
   }
 
@@ -255,18 +264,10 @@
       const anyLive = lg.games.some((g) => g.state === 'in');
       out.push({ kicker: lg.label, note: anyLive ? 'Live' : '', html: lg.games.slice(0, 4).map(gameRow).join('') });
     }
-    const trivia = (c.trivia || []).slice();
-    const facts = (c.facts || []).slice();
-    // Interleave so it does not feel like a block of one thing.
-    const n = Math.max(trivia.length, facts.length);
-    for (let i = 0; i < n; i++) {
-      if (trivia[i]) {
-        const q = trivia[i];
-        const choices = (mark) => `<div class="choices">${q.choices.map((ch) => `<span class="${mark && ch === q.answer ? 'right' : ''}">${mark && ch === q.answer ? '✓ ' : ''}${esc(ch)}</span>`).join('')}</div>`;
-        out.push({ kicker: 'Trivia', note: q.category, html: `<div class="q">${esc(q.question)}</div>${choices(false)}` });
-        out.push({ kicker: 'Trivia', note: 'Answer', html: `<div class="q">${esc(q.question)}</div>${choices(true)}` });
-      }
-      if (facts[i]) out.push({ kicker: 'Beer fact', note: '', html: `<div class="fact">${esc(facts[i])}</div>` });
+    for (const q of c.trivia || []) {
+      const choices = (mark) => `<div class="choices">${q.choices.map((ch) => `<span class="${mark && ch === q.answer ? 'right' : ''}">${mark && ch === q.answer ? '✓ ' : ''}${esc(ch)}</span>`).join('')}</div>`;
+      out.push({ kicker: 'Trivia', note: q.category, html: `<div class="q">${esc(q.question)}</div>${choices(false)}` });
+      out.push({ kicker: 'Trivia', note: 'Answer', html: `<div class="q">${esc(q.question)}</div>${choices(true)}` });
     }
     return out;
   }
@@ -285,17 +286,13 @@
       const res = await fetch('/api/extra/content', { cache: 'no-store' });
       const c = await res.json();
       const fresh = buildSlides(c);
-      if (fresh.length) {
-        // Shuffle lightly so facts/trivia vary between loads, but keep scores first.
-        const scoresN = (c.scores || []).filter((l) => l.games.length).length;
-        const rest = fresh.slice(scoresN);
-        for (let i = rest.length - 1; i > 0; i -= 2) { const j = Math.floor(Math.random() * (i + 1)); if ((i % 2) === (j % 2)) [rest[i], rest[j]] = [rest[j], rest[i]]; }
-        slides = fresh.slice(0, scoresN).concat(rest);
-      }
+      if (fresh.length) slides = fresh;
       if (slides.length && !rotTimer) {
         showSlide();
         rotTimer = setInterval(showSlide, (c.seconds || 12) * 1000);
       }
+      // Trivia loads in the background on the server; check back soon if it is not here yet.
+      if (!(c.trivia || []).length) setTimeout(loadContent, 20_000);
     } catch (err) {
       const tile = document.getElementById('infoTile');
       if (tile && !slides.length) tile.innerHTML = `<div class="kicker"><span>Info</span></div><div class="body fact">Nothing to show yet.</div>`;

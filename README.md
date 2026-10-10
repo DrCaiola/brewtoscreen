@@ -66,13 +66,15 @@ With an odd number of taps one slot on the board is empty. On the admin page
 you can fill it with:
 
 - **Rotating info** (bottom-right): live scores for the leagues you tick
-  (ESPN's public scoreboard feed), trivia questions that reveal the answer on
-  the next slide (Open Trivia DB), and a built-in list of beer facts.
+  (ESPN's public scoreboard feed) and trivia questions that reveal the answer
+  on the next slide (Open Trivia DB). Tick the trivia categories you want, or
+  none for a mix of everything.
 - **Brewery tile** (top-left): your brewery name in big type.
 - Nothing.
 
-Scores are cached for a minute and trivia for half an hour, so the TV polling
-does not hammer anyone's servers.
+Scores are cached for a minute and trivia for half an hour. Open Trivia DB
+allows one request every five seconds, so after you change categories the new
+questions take about five seconds per category to arrive.
 
 ## One button to put it on the TV
 
@@ -112,6 +114,52 @@ box on your LAN has to run this. It does not have to be your desktop:
   boot and restarts if it crashes. The board must be on the same Wi-Fi as the
   Chromecast. Give it a DHCP reservation on your router so its address, and
   therefore the URL the TV loads, never changes.
+
+### Orange Pi Zero 2W, step by step from a Windows laptop
+
+You need: the board, a microSD card (8 GB or more), a USB-C power supply
+(5V/2A or better), and for the first boot only a mini-HDMI cable to a TV plus
+a USB keyboard on a USB-C OTG adapter. The board has no Ethernet, so Wi-Fi
+has to be set up once at the keyboard; after that everything is done over SSH
+from the laptop.
+
+1. **Flash the card.** Download the Armbian image for the Orange Pi Zero 2W
+   from <https://www.armbian.com/orange-pi-zero-2w/> (the minimal/CLI
+   Bookworm build is plenty). Write it to the microSD with
+   [balenaEtcher](https://etcher.balena.io/) or Rufus.
+2. **First boot at the TV.** Insert the card, connect HDMI and keyboard,
+   power on. Log in as `root` with password `1234`. Armbian's first-run
+   wizard asks you to set a root password and create a normal user (call it
+   `brew`). When it asks about networking, pick your Wi-Fi and enter the
+   password. If it does not ask, run `nmtui`, choose *Activate a connection*,
+   and join your Wi-Fi. Note the IP it gets (`hostname -I`).
+3. **Reserve its IP.** In your router (Google Home app for Google Wifi:
+   Wi-Fi → Devices → the board → Settings → Reserve IP) reserve that address
+   so it never changes.
+4. **Copy the project over from the laptop.** In a terminal on this laptop:
+
+   ```bash
+   scp -r C:/dev/brewtoscreen/{server.js,package.json,package-lock.json,lib,public,deploy,.env.example,.env,data} brew@<board-ip>:~/brewtoscreen/
+   ```
+
+   (Create the folder first with `ssh brew@<board-ip> mkdir -p brewtoscreen`.)
+   Or, if you have pushed the repo to GitHub, `ssh` in and
+   `git clone <repo url> ~/brewtoscreen` instead.
+5. **Install and start.**
+
+   ```bash
+   ssh brew@<board-ip>
+   cd ~/brewtoscreen
+   bash deploy/install-pi.sh
+   nano .env        # Brewfather credentials; set CAST_ON_START=true
+   sudo systemctl restart brewtoscreen@brew
+   ```
+
+6. **Point the TV at the board.** Open `http://<board-ip>:3000/admin.html`
+   from any device on the Wi-Fi, scan, and make your TV the default. Unplug
+   the keyboard and HDMI; the board can live anywhere with power and Wi-Fi.
+
+To update later, repeat step 4 and `sudo systemctl restart brewtoscreen@brew`.
 - **GitHub Pages for the guest page.** The board for guests can live on GitHub
   Pages: a scheduled GitHub Action pulls Brewfather and writes `taps.json`
   into the repo, and the static page reads that. The LAN box is then only

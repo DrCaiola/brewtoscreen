@@ -74,7 +74,10 @@
     <div class="row" style="margin-top:10px" id="leagues"></div>
     <div class="row" style="margin-top:10px">
       <label><input type="checkbox" id="xtrivia"> Trivia</label>
-      <label><input type="checkbox" id="xfacts"> Beer facts</label>
+      <span class="muted">Categories (none ticked = any):</span>
+    </div>
+    <div class="row" id="categories" style="margin-top:6px"></div>
+    <div class="row" style="margin-top:10px">
       <label>Seconds per slide <input type="number" id="xseconds" min="5" max="60"></label>
       <button class="primary" id="saveExtra">Save spare tile</button>
     </div>
@@ -190,13 +193,16 @@
   // ---- Spare tile ----
   async function loadExtra() {
     try {
-      const { extra, leagues } = await api('/api/extra');
+      const { extra, leagues, triviaCategories } = await api('/api/extra');
       document.querySelector(`input[name=xmode][value=${extra.mode}]`).checked = true;
       $('breweryName').value = extra.breweryName || '';
       $('leagues').innerHTML = '<span class="muted">Scores:</span> ' + leagues.map((l) =>
         `<label><input type="checkbox" class="lg" value="${l.key}" ${extra.leagues.includes(l.key) ? 'checked' : ''}> ${esc(l.label)}</label>`).join(' ');
       $('xtrivia').checked = extra.trivia;
-      $('xfacts').checked = extra.facts;
+      const picked = extra.categories || [];
+      $('categories').innerHTML = triviaCategories.length
+        ? triviaCategories.map((c) => `<label><input type="checkbox" class="cat" value="${c.id}" ${picked.includes(c.id) ? 'checked' : ''}> ${esc(c.name)}</label>`).join(' ')
+        : '<span class="muted">Could not load the category list from Open Trivia DB. Try again later.</span>';
       $('xseconds').value = extra.seconds;
     } catch (err) { msg('extraMsg', err.message, 'err'); }
   }
@@ -206,12 +212,12 @@
       breweryName: $('breweryName').value,
       leagues: [...document.querySelectorAll('.lg:checked')].map((c) => c.value),
       trivia: $('xtrivia').checked,
-      facts: $('xfacts').checked,
+      categories: [...document.querySelectorAll('.cat:checked')].map((c) => Number(c.value)),
       seconds: Number($('xseconds').value),
     };
     try {
       await api('/api/extra', { method: 'PUT', body: JSON.stringify(body) });
-      msg('extraMsg', 'Saved. The board picks it up within a minute.', 'ok');
+      msg('extraMsg', `Saved. The board picks it up within a minute${body.categories.length > 1 ? ` (new trivia takes about ${5 * body.categories.length} seconds to load)` : ''}.`, 'ok');
     } catch (err) { msg('extraMsg', err.message, 'err'); }
   });
   loadExtra();

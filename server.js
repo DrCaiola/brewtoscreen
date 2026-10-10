@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BrewfatherClient, SAMPLE_BATCHES } from './lib/brewfather.js';
 import { discoverDevices, castUrl, stopCasting, deviceStatus } from './lib/cast.js';
-import { getScores, getTrivia, BEER_FACTS, LEAGUE_OPTIONS } from './lib/extras.js';
+import { getScores, getTrivia, getTriviaCategories, LEAGUE_OPTIONS } from './lib/extras.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
@@ -24,7 +24,8 @@ const brewfather = new BrewfatherClient({
 
 // extra: what goes in the spare tile when the tap count is odd.
 //   mode: 'info' (rotating scores/trivia/facts, bottom-right) | 'brewery' (name tile, top-left) | 'none'
-const DEFAULT_EXTRA = { mode: 'info', breweryName: '', leagues: ['nfl', 'mlb'], trivia: true, facts: true, seconds: 12 };
+//   categories: Open Trivia DB category ids; empty = any category.
+const DEFAULT_EXTRA = { mode: 'info', breweryName: '', leagues: ['nfl', 'mlb'], trivia: true, categories: [], seconds: 12 };
 let state = { title: 'On Tap', taps: [], lastCast: null, defaultDevice: null, extra: { ...DEFAULT_EXTRA } };
 
 async function loadState() {
@@ -117,7 +118,9 @@ app.put('/api/taps', wrap(async (req, res) => {
 }));
 
 // Spare-tile settings and content.
-app.get('/api/extra', (req, res) => res.json({ extra: state.extra, leagues: LEAGUE_OPTIONS }));
+app.get('/api/extra', wrap(async (req, res) => {
+  res.json({ extra: state.extra, leagues: LEAGUE_OPTIONS, triviaCategories: await getTriviaCategories() });
+}));
 
 app.put('/api/extra', wrap(async (req, res) => {
   const b = req.body ?? {};
@@ -127,20 +130,19 @@ app.put('/api/extra', wrap(async (req, res) => {
     breweryName: typeof b.breweryName === 'string' ? b.breweryName.slice(0, 60) : state.extra.breweryName,
     leagues: Array.isArray(b.leagues) ? b.leagues.filter((l) => LEAGUE_OPTIONS.some((o) => o.key === l)) : state.extra.leagues,
     trivia: b.trivia === undefined ? state.extra.trivia : Boolean(b.trivia),
-    facts: b.facts === undefined ? state.extra.facts : Boolean(b.facts),
+    categories: Array.isArray(b.categories) ? b.categories.map(Number).filter(Boolean).slice(0, 12) : (state.extra.categories ?? []),
     seconds: Math.min(60, Math.max(5, Number(b.seconds) || state.extra.seconds)),
   };
   await saveState();
+  if (state.extra.trivia) getTrivia(state.extra.categories); // warm the cache in the background
   res.json({ ok: true, extra: state.extra });
 }));
 
 app.get('/api/extra/content', wrap(async (req, res) => {
   const e = state.extra;
-  const [scores, trivia] = await Promise.all([
-    e.leagues.length ? getScores(e.leagues) : [],
-    e.trivia ? getTrivia() : [],
-  ]);
-  res.json({ scores, trivia: trivia ?? [], facts: e.facts ? BEER_FACTS : [], seconds: e.seconds });
+  const scores = e.leagues.length ? await getScores(e.leagues) : [];
+  const trivia = e.trivia ? getTrivia(e.categories ?? []) : [];
+  res.json({ scores, trivia, seconds: e.seconds });
 }));
 
 // Chromecast.
