@@ -64,8 +64,9 @@
     gap: calc(clamp(6px, 0.7vw, 12px) * var(--fs));
   }
   .bubble {
-    --d: calc(clamp(54px, 5.6vw, 104px) * var(--fs));
-    width: var(--d); height: var(--d); border-radius: 22%;
+    width: calc(clamp(74px, 8vw, 156px) * var(--fs));
+    height: calc(clamp(46px, 4.9vw, 92px) * var(--fs));
+    border-radius: calc(clamp(8px, 0.8vw, 16px) * var(--fs));
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.1em;
     background: rgba(242, 181, 58, .10);
     border: 2px solid rgba(242, 181, 58, .38);
@@ -342,10 +343,11 @@
         { kicker: 'Trivia', note: 'Answer', html: `<div class="q">${esc(q.question)}</div>${choices(true)}` },
       ]);
     }
-    const every = Math.max(1, c.scoresEvery || 2);
+    if (!trivia.length) return scores;
+    const every = Number(c.scoresEvery) || 0;   // 0 = all score slides once per trivia loop
+    if (!every) return [...scores, ...trivia.flat()];
     const out = [];
     let s = 0;
-    if (!trivia.length) return scores;
     for (let i = 0; i < trivia.length; i++) {
       if (scores.length && i % every === 0) out.push(scores[s++ % scores.length]);
       out.push(...trivia[i]);
