@@ -16,7 +16,7 @@ const TAPS_FILE = path.join(__dirname, 'data', 'taps.json');
 const brewfather = new BrewfatherClient({
   userId: process.env.BREWFATHER_USER_ID,
   apiKey: process.env.BREWFATHER_API_KEY,
-  statuses: (process.env.BREWFATHER_STATUSES || 'Conditioning,Completed').split(',').map((s) => s.trim()).filter(Boolean),
+  statuses: (process.env.BREWFATHER_STATUSES || 'Fermenting,Conditioning,Completed').split(',').map((s) => s.trim()).filter(Boolean),
   cacheMinutes: Number(process.env.BREWFATHER_CACHE_MINUTES) || 10,
 });
 
