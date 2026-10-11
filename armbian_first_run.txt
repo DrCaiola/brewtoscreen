@@ -1,0 +1,6 @@
+FR_general_delete_this_file_after_completion=1
+FR_net_change_defaults=1
+FR_net_wifi_enabled=1
+FR_net_wifi_ssid="Your_WiFi_Name"
+FR_net_wifi_key="Your_WiFi_Password"
+FR_net_wifi_countrycode="US"

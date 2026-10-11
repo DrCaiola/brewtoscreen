@@ -110,10 +110,27 @@ box on your LAN has to run this. It does not have to be your desktop:
   ```
 
   The install script installs Node 22 if needed, installs dependencies, and
-  registers a systemd service (`deploy/brewtoscreen.service`) so it starts on
-  boot and restarts if it crashes. The board must be on the same Wi-Fi as the
-  Chromecast. Give it a DHCP reservation on your router so its address, and
-  therefore the URL the TV loads, never changes.
+  writes a systemd service (`brewtoscreen`) so it starts on boot and restarts
+  if it crashes. It works as root or as a sudo user. The board must be on the
+  same Wi-Fi as the Chromecast. Give it a DHCP reservation on your router so
+  its address, and therefore the URL the TV loads, never changes.
+
+  **From the laptop in one command.** Once key-based SSH works
+  (`ssh-copy-id user@board` once), this copies the project over, installs,
+  and restarts the service, and is also how you ship updates later:
+
+  ```bash
+  bash deploy/push-to-pi.sh dietpi@192.168.86.53
+  ```
+
+  It copies your `.env` and `data/taps.json` too, so the board starts with
+  the same credentials, taps, and default TV as the laptop.
+
+### DietPi note
+
+DietPi works the same way. Its SSH server is Dropbear, which is fine. The
+default user is `dietpi` (sudo without a password) and root login is also
+allowed, so either `dietpi@<ip>` or `root@<ip>` works for the push script.
 
 ### Orange Pi Zero 2W, step by step from a Windows laptop
 
