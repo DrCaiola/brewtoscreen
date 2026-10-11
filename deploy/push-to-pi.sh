@@ -14,4 +14,4 @@ tar --exclude=node_modules --exclude=.git --exclude='.claude' -cz \
 | ssh "$TARGET" 'mkdir -p ~/brewtoscreen && tar -xz -C ~/brewtoscreen'
 
 echo ">> installing / starting on the board"
-ssh "$TARGET" 'cd ~/brewtoscreen && bash deploy/install-pi.sh && SUDO=$([ "$(id -u)" -eq 0 ] || echo sudo) && $SUDO systemctl restart brewtoscreen && sleep 3 && systemctl is-active brewtoscreen && curl -s localhost:3000/api/health'
+ssh "$TARGET" 'cd ~/brewtoscreen && bash deploy/install-pi.sh && S=$([ "$(id -u)" -eq 0 ] || echo sudo); $S systemctl restart brewtoscreen && sleep 3 && $S systemctl is-active brewtoscreen && curl -s localhost:3000/api/health; echo'
