@@ -177,15 +177,11 @@ from the laptop.
    the keyboard and HDMI; the board can live anywhere with power and Wi-Fi.
 
 To update later, repeat step 4 and `sudo systemctl restart brewtoscreen@brew`.
-- **GitHub Pages for the guest page.** The board for guests can live on GitHub
-  Pages: a scheduled GitHub Action pulls Brewfather and writes `taps.json`
-  into the repo, and the static page reads that. The LAN box is then only
-  needed to send the cast command, and it can cast the GitHub Pages URL
-  instead of its own. This is not built yet; ask for it if you want it.
 
 What will not work: hosting only on GitHub Pages with no LAN box, because
 nothing could talk to the Chromecast, and the Brewfather API key must not be
-exposed in a public page.
+exposed in a public page. What does work is publishing a snapshot of the tap
+list to a static site; see the next section.
 
 ## Web page for guests
 
@@ -193,11 +189,59 @@ Anyone on your Wi-Fi can open the same address the TV uses. To share it beyond
 your network, put it behind something like Tailscale Funnel or a Cloudflare
 Tunnel, which gives you an HTTPS address without opening ports on your router.
 
+## Publishing the tap list to a website
+
+brewtoscreen can write the tap list as a JSON file into a GitHub repo, so a
+static site (GitHub Pages, for example) can show what is on tap without
+anyone reaching your LAN. It publishes a few seconds after you save taps or
+custom items in the admin page, once at startup, and every
+`PUBLISH_EVERY_HOURS` so Brewfather-side edits (a measured ABV, a renamed
+batch) get through too. Commits are skipped when nothing changed.
+
+1. On GitHub, as the account that owns the website repo, create a
+   **fine-grained** personal access token at
+   <https://github.com/settings/personal-access-tokens/new>: repository
+   access *Only select repositories* with just the site repo, and under
+   *Repository permissions* set **Contents** to *Read and write*.
+2. In `.env` on the box running brewtoscreen:
+
+   ```
+   PUBLISH_GITHUB_TOKEN=github_pat_...
+   PUBLISH_REPO=owner/site-repo
+   PUBLISH_PATH=taps.json
+   PUBLISH_BRANCH=main
+   PUBLISH_EVERY_HOURS=24
+   ```
+
+3. Restart. The admin page gains a **Website** section with the last publish
+   result and a *Publish to website now* button. `GET /api/publish/preview`
+   shows exactly what gets written.
+
+The file looks like:
+
+```json
+{
+  "title": "Finniak Brewing",
+  "taps": [
+    { "tap": 1, "label": null, "beer": { "name": "Kinda Italian", "style": "Italian-Style Pilsener",
+      "abv": 5.4, "ibu": 33, "srm": 3.2, "calories": 202, "carbs": 15.5, "notes": null,
+      "custom": false, "kind": null, "brewDate": 1783051200000 } },
+    { "tap": 4, "label": null, "beer": null }
+  ],
+  "updatedAt": 1791756295455
+}
+```
+
+`beer: null` is a kicked tap. Custom items (seltzer, hopped tea) have
+`custom: true` and a `kind`. Spare-tile settings and cast state are never
+published.
+
 ## Files
 
 - `server.js` - Express server, tap state, API routes
 - `lib/brewfather.js` - Brewfather v2 client with caching (API limit: 500 calls/hour)
 - `lib/cast.js` - Chromecast discovery (mDNS) and DashCast launching
+- `lib/publish.js` - pushes the tap list to a GitHub repo for a static website
 - `public/index.html` - the tap list board
 - `public/admin.html` - admin page
 - `data/taps.json` - your saved tap assignments (created on first save)

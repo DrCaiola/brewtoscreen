@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { BrewfatherClient, SAMPLE_BATCHES } from './lib/brewfather.js';
 import { discoverDevices, castUrl, stopCasting, deviceStatus } from './lib/cast.js';
 import { getScores, getTrivia, getTriviaCategories, LEAGUE_OPTIONS } from './lib/extras.js';
+import { Publisher, toSnapshot } from './lib/publish.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
@@ -17,6 +18,15 @@ const brewfather = new BrewfatherClient({
   apiKey: process.env.BREWFATHER_API_KEY,
   statuses: (process.env.BREWFATHER_STATUSES || 'Conditioning,Completed').split(',').map((s) => s.trim()).filter(Boolean),
   cacheMinutes: Number(process.env.BREWFATHER_CACHE_MINUTES) || 10,
+});
+
+// Optional: push the tap list to a GitHub repo (e.g. the brewery's GitHub Pages site).
+const publisher = new Publisher({
+  token: process.env.PUBLISH_GITHUB_TOKEN,
+  repo: process.env.PUBLISH_REPO,
+  path: process.env.PUBLISH_PATH || 'taps.json',
+  branch: process.env.PUBLISH_BRANCH || 'main',
+  everyHours: process.env.PUBLISH_EVERY_HOURS ?? 24,
 });
 
 // ---- tap state (persisted to data/taps.json) --------------------------------
@@ -81,6 +91,10 @@ async function tapList() {
   return { title: state.title, taps, extra: state.extra, source, updatedAt: Date.now() };
 }
 
+// The public snapshot for the website, and a debounced publish after edits.
+const snapshot = async () => toSnapshot(await tapList());
+const publishSoon = () => publisher.schedule(snapshot);
+
 function lanAddress() {
   for (const ifaces of Object.values(os.networkInterfaces())) {
     for (const i of ifaces ?? []) {
@@ -138,6 +152,7 @@ app.put('/api/taps', wrap(async (req, res) => {
   if (tapCount !== undefined) state.tapCount = Math.min(12, Math.max(1, Number(tapCount) || 7));
   if (showAll !== undefined) state.showAll = Boolean(showAll);
   await saveState();
+  publishSoon();
   res.json({ ok: true, taps: state.taps, title: state.title, tapCount: state.tapCount, showAll: state.showAll });
 }));
 
@@ -167,6 +182,7 @@ app.post('/api/custom', wrap(async (req, res) => {
   if (idx >= 0) state.custom[idx] = { ...state.custom[idx], ...item };
   else state.custom.unshift(item);
   await saveState();
+  publishSoon();
   res.json({ ok: true, item });
 }));
 
@@ -174,7 +190,21 @@ app.delete('/api/custom/:id', wrap(async (req, res) => {
   state.custom = state.custom.filter((c) => c.id !== req.params.id);
   state.taps = state.taps.filter((t) => t.batchId !== req.params.id);
   await saveState();
+  publishSoon();
   res.json({ ok: true });
+}));
+
+// Website publishing (GitHub). GET shows status, POST publishes right now.
+app.get('/api/publish', (req, res) => {
+  res.json({ configured: publisher.configured, repo: publisher.repo ?? null, path: publisher.path, url: publisher.url, everyHours: publisher.everyMs / 3600000, last: publisher.last });
+});
+
+app.get('/api/publish/preview', wrap(async (req, res) => res.json(await snapshot())));
+
+app.post('/api/publish', wrap(async (req, res) => {
+  if (!publisher.configured) return res.status(400).json({ error: 'Publishing is not set up. Add PUBLISH_GITHUB_TOKEN and PUBLISH_REPO to .env.' });
+  const result = await publisher.publish(await snapshot(), { force: Boolean(req.body?.force) });
+  res.json({ ok: true, ...result, url: publisher.url });
 }));
 
 // Spare-tile settings and content.
@@ -271,7 +301,12 @@ app.post('/api/cast/stop', wrap(async (req, res) => {
 }));
 
 app.get('/api/health', (req, res) =>
-  res.json({ ok: true, brewfather: brewfather.configured ? 'configured' : 'sample-data', displayUrl: displayUrl() }),
+  res.json({
+    ok: true,
+    brewfather: brewfather.configured ? 'configured' : 'sample-data',
+    publish: publisher.configured ? publisher.repo : 'off',
+    displayUrl: displayUrl(),
+  }),
 );
 
 await loadState();
@@ -281,6 +316,13 @@ app.listen(PORT, () => {
   console.log(`  Admin:                   http://localhost:${PORT}/admin.html`);
   console.log(`  Brewfather:              ${brewfather.configured ? 'configured' : 'NOT configured, showing sample data (copy .env.example to .env)'}`);
   console.log(`  Default TV:              ${state.defaultDevice ? state.defaultDevice.name : 'none (set one on the admin page)'}`);
+  console.log(`  Website:                 ${publisher.configured ? `${publisher.repo}/${publisher.path}, every ${publisher.everyMs / 3600000}h and after edits` : 'off (set PUBLISH_GITHUB_TOKEN and PUBLISH_REPO)'}`);
+
+  if (publisher.configured) {
+    publisher.start(snapshot);
+    // Catch up on anything that changed while the server was down.
+    publisher.schedule(snapshot, 15000);
+  }
 
   if (/^(1|true|yes)$/i.test(process.env.CAST_ON_START ?? '') && state.defaultDevice) {
     console.log('  CAST_ON_START is set, casting to the default TV in 5s...');
