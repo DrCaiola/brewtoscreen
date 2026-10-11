@@ -106,6 +106,7 @@
     <div class="row" style="margin-top:10px">
       <label>Seconds per slide <input type="number" id="xseconds" min="5" max="60"></label>
       <label>Scores after every <input type="number" id="xevery" min="0" max="30"> trivia questions <span class="muted">(0 = once per loop)</span></label>
+      <label>Live score updates at most every <input type="number" id="xlive" min="0" max="60"> min <span class="muted">(0 = off)</span></label>
       <button class="primary" id="saveExtra">Save spare tile</button>
     </div>
     <div class="msg" id="extraMsg"></div>
@@ -302,6 +303,7 @@
         : '<span class="muted">Could not load the category list from Open Trivia DB. Try again later.</span>';
       $('xseconds').value = extra.seconds;
       $('xevery').value = extra.scoresEvery ?? 0;
+      $('xlive').value = extra.liveMinutes ?? 2;
     } catch (err) { msg('extraMsg', err.message, 'err'); }
   }
   $('saveExtra').addEventListener('click', async () => {
@@ -313,6 +315,7 @@
       categories: [...document.querySelectorAll('.cat:checked')].map((c) => Number(c.value)),
       seconds: Number($('xseconds').value),
       scoresEvery: Number($('xevery').value) || 0,
+      liveMinutes: Number($('xlive').value) || 0,
     };
     try {
       await api('/api/extra', { method: 'PUT', body: JSON.stringify(body) });

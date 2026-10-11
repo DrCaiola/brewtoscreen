@@ -26,7 +26,8 @@ const brewfather = new BrewfatherClient({
 //   mode: 'info' (rotating scores/trivia/facts, bottom-right) | 'brewery' (name tile, top-left) | 'none'
 //   categories: Open Trivia DB category ids; empty = any category.
 //   scoresEvery: show a scores slide after this many trivia questions; 0 = once per full trivia loop.
-const DEFAULT_EXTRA = { mode: 'info', breweryName: '', leagues: ['nfl', 'mlb'], trivia: true, categories: [], seconds: 12, scoresEvery: 0 };
+//   liveMinutes: when a live game's score changes, cut in with it, at most once per this many minutes; 0 = off.
+const DEFAULT_EXTRA = { mode: 'info', breweryName: '', leagues: ['nfl', 'mlb'], trivia: true, categories: [], seconds: 12, scoresEvery: 0, liveMinutes: 2 };
 // tapCount + showAll: always draw this many tap slots; unassigned ones show as "Kicked".
 // custom: things that are not in Brewfather (seltzer, hopped tea...). Same shape as a batch.
 let state = {
@@ -192,6 +193,7 @@ app.put('/api/extra', wrap(async (req, res) => {
     categories: Array.isArray(b.categories) ? b.categories.map(Number).filter(Boolean).slice(0, 12) : (state.extra.categories ?? []),
     seconds: Math.min(60, Math.max(5, Number(b.seconds) || state.extra.seconds)),
     scoresEvery: b.scoresEvery === undefined ? (state.extra.scoresEvery ?? 0) : Math.min(30, Math.max(0, Number(b.scoresEvery) || 0)),
+    liveMinutes: b.liveMinutes === undefined ? (state.extra.liveMinutes ?? 2) : Math.min(60, Math.max(0, Number(b.liveMinutes) || 0)),
   };
   await saveState();
   if (state.extra.trivia) getTrivia(state.extra.categories); // warm the cache in the background
@@ -202,7 +204,7 @@ app.get('/api/extra/content', wrap(async (req, res) => {
   const e = state.extra;
   const scores = e.leagues.length ? await getScores(e.leagues) : [];
   const trivia = e.trivia ? getTrivia(e.categories ?? []) : [];
-  res.json({ scores, trivia, seconds: e.seconds, scoresEvery: e.scoresEvery ?? 0 });
+  res.json({ scores, trivia, seconds: e.seconds, scoresEvery: e.scoresEvery ?? 0, liveMinutes: e.liveMinutes ?? 2 });
 }));
 
 // Chromecast.

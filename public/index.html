@@ -112,7 +112,17 @@
   .tile.fade .body { animation: fadein .5s ease; }
   @keyframes fadein { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
   .game { display: grid; grid-template-columns: 1fr auto auto; align-items: center; column-gap: 0.8em;
-    font-size: calc(clamp(14px, 1.7vw, 30px) * var(--fs)); line-height: 1.3; }
+    font-size: calc(clamp(14px, 1.6vw, 28px) * var(--fs)); line-height: 1.3; }
+  /* live score cut-in */
+  .kicker .livedot::before { content: ''; display: inline-block; width: 0.55em; height: 0.55em; border-radius: 50%; background: #ff5252; margin-right: 0.4em; animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: .25; } }
+  .live-big { display: flex; align-items: center; justify-content: center; gap: calc(clamp(12px, 1.6vw, 30px) * var(--fs)); }
+  .live-big .lt { display: flex; align-items: center; gap: 0.35em; font-size: calc(clamp(18px, 2.3vw, 42px) * var(--fs)); font-weight: 700; }
+  .live-big .lt img { height: 1.3em; width: 1.3em; object-fit: contain; }
+  .live-big .sc { font-size: 1.35em; font-variant-numeric: tabular-nums; margin-left: 0.2em; }
+  .live-big .lt.scored .sc { color: var(--accent); }
+  .live-big .vs { color: var(--muted); font-size: calc(clamp(14px, 1.6vw, 28px) * var(--fs)); }
+  .live-status { text-align: center; color: var(--muted); font-size: calc(clamp(13px, 1.3vw, 22px) * var(--fs)); margin-top: 0.4em; }
   .game .teams { display: flex; align-items: center; gap: 0.45em; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .game img { height: 1.15em; width: 1.15em; object-fit: contain; }
   .game .score { font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
@@ -328,8 +338,14 @@
     const scores = [];
     for (const lg of c.scores || []) {
       if (!lg.games.length) continue;
-      const anyLive = lg.games.some((g) => g.state === 'in');
-      scores.push({ kicker: lg.label, note: anyLive ? 'Live' : '', html: lg.games.slice(0, 4).map(gameRow).join('') });
+      // Three games per slide keeps the rows inside the tile on a 1080p TV.
+      const chunks = [];
+      for (let i = 0; i < Math.min(lg.games.length, 9); i += 3) chunks.push(lg.games.slice(i, i + 3));
+      chunks.forEach((games, i) => {
+        const anyLive = games.some((g) => g.state === 'in');
+        const note = [anyLive ? 'Live' : '', chunks.length > 1 ? `${i + 1}/${chunks.length}` : ''].filter(Boolean).join(' · ');
+        scores.push({ kicker: lg.label, note, html: games.map(gameRow).join('') });
+      });
     }
     const trivia = [];
     for (const q of c.trivia || []) {
@@ -360,34 +376,78 @@
     slideIdx++;
   }
 
+  // ---- live score cut-ins ----
+  // Remember each live game's score; when one changes, show that game right
+  // away (at most once per `liveMinutes`), then carry on with the rotation.
+  const lastScore = new Map();   // game id -> "away-home"
+  let lastCutIn = 0;
+  let slideSeconds = 12;
+
+  function liveSlide(g, label) {
+    const team = (t, scored) => `<div class="lt ${scored ? 'scored' : ''}">${t.logo ? `<img src="${esc(t.logo)}" alt="">` : ''}<span class="ab">${esc(t.abbr || t.name)}</span><span class="sc">${esc(t.score)}</span></div>`;
+    return `<div class="live-big">${team(g.away, g.awayScored)}<div class="vs">@</div>${team(g.home, g.homeScored)}</div><div class="live-status">${esc(g.detail)}</div>`;
+  }
+
+  function detectLiveChanges(c, liveMinutes) {
+    const changed = [];
+    for (const lg of c.scores || []) {
+      for (const g of lg.games) {
+        const key = `${g.away.score}-${g.home.score}`;
+        const prev = lastScore.get(g.id);
+        if (g.state === 'in' && prev !== undefined && prev !== key) {
+          const [pa, ph] = prev.split('-');
+          changed.push({ ...g, label: lg.label, awayScored: pa !== g.away.score, homeScored: ph !== g.home.score });
+        }
+        lastScore.set(g.id, key);
+      }
+    }
+    if (!changed.length || !liveMinutes) return;
+    if (Date.now() - lastCutIn < liveMinutes * 60_000) return;
+    lastCutIn = Date.now();
+    const g = changed[0];
+    const tile = document.getElementById('infoTile');
+    if (!tile) return;
+    tile.classList.remove('fade'); void tile.offsetWidth; tile.classList.add('fade');
+    tile.innerHTML = `<div class="kicker"><span>Score update</span><span class="livedot">${esc(g.label)} · Live</span></div><div class="body">${liveSlide(g)}</div>`;
+    // Hold this slide for a full interval, then resume where the rotation was.
+    clearInterval(rotTimer);
+    rotTimer = setInterval(showSlide, slideSeconds * 1000);
+  }
+
   async function loadContent() {
+    let anyLive = false;
     try {
       const res = await fetch('/api/extra/content', { cache: 'no-store' });
       const c = await res.json();
+      slideSeconds = c.seconds || 12;
+      anyLive = (c.scores || []).some((lg) => lg.games.some((g) => g.state === 'in'));
       const fresh = buildSlides(c);
       if (fresh.length) slides = fresh;
       if (slides.length && !rotTimer) {
         showSlide();
-        rotTimer = setInterval(showSlide, (c.seconds || 12) * 1000);
+        rotTimer = setInterval(showSlide, slideSeconds * 1000);
       }
+      detectLiveChanges(c, c.liveMinutes ?? 2);
       // Trivia loads in the background on the server; check back soon if it is not here yet.
-      if (!(c.trivia || []).length) setTimeout(loadContent, 20_000);
+      if (!(c.trivia || []).length) anyLive = true;
     } catch (err) {
       const tile = document.getElementById('infoTile');
       if (tile && !slides.length) tile.innerHTML = `<div class="kicker"><span>Info</span></div><div class="body fact">Nothing to show yet.</div>`;
     }
+    // Poll faster while a game is live so score changes show up quickly.
+    clearTimeout(contentTimer);
+    contentTimer = setTimeout(loadContent, anyLive ? 30_000 : 120_000);
   }
 
   function startRotation() {
     if (!contentTimer) {
       loadContent();
-      contentTimer = setInterval(loadContent, 120_000);
     } else if (slides.length) {
       showSlide();
     }
   }
   function stopRotation() {
-    clearInterval(rotTimer); clearInterval(contentTimer);
+    clearInterval(rotTimer); clearTimeout(contentTimer);
     rotTimer = contentTimer = null; slides = [];
   }
 
