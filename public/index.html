@@ -158,7 +158,7 @@
   <main id="taps"><div class="empty">Loading…</div></main>
   <footer>
     <span id="status"></span>
-    <span>brewtoscreen</span>
+    <span id="adminHint"></span>
   </footer>
 
 <script>
@@ -304,9 +304,10 @@
     extra = data.extra || { mode: 'none' };
     const main = document.getElementById('taps');
     const taps = data.taps || [];
-    if (!taps.length) {
+    const nothingAssigned = !taps.some((t) => t.beer);
+    if (!taps.length || (nothingAssigned && data.source === 'sample')) {
       main.style.setProperty('--cols', 1);
-      main.innerHTML = '<div class="empty">Nothing on tap right now.<br>Pick some batches on the admin page.</div>';
+      main.innerHTML = `<div class="empty">${data.source === 'sample' ? 'Almost there. Connect Brewfather and pick your taps at' : 'Nothing on tap yet. Pick some batches at'}<br><b style="color:var(--accent)">${esc(adminUrl())}</b><br><span style="font-size:.7em">from a phone or laptop on this Wi-Fi</span></div>`;
       stopRotation();
       return;
     }
@@ -473,6 +474,12 @@
       status.textContent = 'Could not reach the tap server: ' + err.message;
     }
   }
+
+  // Shown in the footer so anyone standing at the TV knows where to change things.
+  function adminUrl() {
+    return `${location.origin}/admin.html`;
+  }
+  document.getElementById('adminHint').textContent = `Change taps at ${adminUrl()}`;
 
   function tickClock() {
     document.getElementById('clock').textContent =

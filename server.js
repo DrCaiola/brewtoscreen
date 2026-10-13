@@ -12,13 +12,22 @@ import { Publisher, toSnapshot } from './lib/publish.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
 const TAPS_FILE = path.join(__dirname, 'data', 'taps.json');
+const SETTINGS_FILE = path.join(__dirname, 'data', 'settings.json');
 
-const brewfather = new BrewfatherClient({
-  userId: process.env.BREWFATHER_USER_ID,
-  apiKey: process.env.BREWFATHER_API_KEY,
-  statuses: (process.env.BREWFATHER_STATUSES || 'Fermenting,Conditioning,Completed').split(',').map((s) => s.trim()).filter(Boolean),
-  cacheMinutes: Number(process.env.BREWFATHER_CACHE_MINUTES) || 10,
-});
+// Credentials can come from .env or from the admin page's setup form
+// (saved to data/settings.json), so nobody has to edit a file by hand.
+let settings = {};
+try { settings = JSON.parse(await fs.readFile(SETTINGS_FILE, 'utf8')); } catch { /* none yet */ }
+
+function makeBrewfather() {
+  return new BrewfatherClient({
+    userId: process.env.BREWFATHER_USER_ID || settings.brewfatherUserId,
+    apiKey: process.env.BREWFATHER_API_KEY || settings.brewfatherApiKey,
+    statuses: (process.env.BREWFATHER_STATUSES || 'Fermenting,Conditioning,Completed').split(',').map((s) => s.trim()).filter(Boolean),
+    cacheMinutes: Number(process.env.BREWFATHER_CACHE_MINUTES) || 10,
+  });
+}
+let brewfather = makeBrewfather();
 
 // Optional: push the tap list to a GitHub repo (e.g. the brewery's GitHub Pages site).
 const publisher = new Publisher({
@@ -154,6 +163,35 @@ app.put('/api/taps', wrap(async (req, res) => {
   await saveState();
   publishSoon();
   res.json({ ok: true, taps: state.taps, title: state.title, tapCount: state.tapCount, showAll: state.showAll });
+}));
+
+// First-run setup from the admin page: save Brewfather credentials after testing them.
+app.get('/api/setup', (req, res) => {
+  res.json({
+    configured: brewfather.configured,
+    source: process.env.BREWFATHER_USER_ID ? 'env' : settings.brewfatherUserId ? 'settings' : null,
+    userId: brewfather.userId ? `${brewfather.userId.slice(0, 4)}…` : null,
+  });
+});
+
+app.post('/api/setup', wrap(async (req, res) => {
+  const userId = String(req.body?.userId ?? '').trim();
+  const apiKey = String(req.body?.apiKey ?? '').trim();
+  if (!userId || !apiKey) return res.status(400).json({ error: 'Both the User ID and the API key are needed.' });
+  const trial = new BrewfatherClient({ userId, apiKey, statuses: ['Completed'], cacheMinutes: 1 });
+  try {
+    await trial._get('/batches', { limit: 1 });
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  settings = { ...settings, brewfatherUserId: userId, brewfatherApiKey: apiKey };
+  await fs.mkdir(path.dirname(SETTINGS_FILE), { recursive: true });
+  await fs.writeFile(SETTINGS_FILE, JSON.stringify(settings, null, 2), { mode: 0o600 });
+  brewfather = makeBrewfather();
+  // Anything that was pointing at sample beers no longer applies.
+  state.taps = state.taps.filter((t) => !t.batchId.startsWith('sample-'));
+  await saveState();
+  res.json({ ok: true, configured: true });
 }));
 
 // Custom (non-Brewfather) items.
@@ -324,8 +362,26 @@ app.listen(PORT, () => {
     publisher.schedule(snapshot, 15000);
   }
 
-  if (/^(1|true|yes)$/i.test(process.env.CAST_ON_START ?? '') && state.defaultDevice) {
+  if (/^(1|true|yes)$/i.test(process.env.CAST_ON_START ?? '')) {
     console.log('  CAST_ON_START is set, casting to the default TV in 5s...');
-    setTimeout(() => doCast(state.defaultDevice).catch((err) => console.error('cast on start failed:', err.message)), 5000);
+    setTimeout(async () => {
+      try {
+        if (!state.defaultDevice) {
+          // No TV chosen yet: if there is exactly one screen on the network, use it.
+          const screens = (await discoverDevices({ timeoutMs: 5000 })).filter((d) => d.video);
+          if (screens.length === 1) {
+            state.defaultDevice = { host: screens[0].host, port: screens[0].port, name: screens[0].name };
+            await saveState();
+            console.log(`  Only one screen found, using it as the default TV: ${screens[0].name}`);
+          } else {
+            console.log(`  ${screens.length} screens found; pick one on the admin page.`);
+            return;
+          }
+        }
+        await doCast(state.defaultDevice);
+      } catch (err) {
+        console.error('cast on start failed:', err.message);
+      }
+    }, 5000);
   }
 });

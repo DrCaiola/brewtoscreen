@@ -1,64 +1,124 @@
 # brewtoscreen
 
-Pulls your finished batches from Brewfather, lets you pick which ones are on tap,
-and shows the tap list on a Chromecast and on a web page for guests.
+A tap list for homebrewers. It pulls your batches from
+[Brewfather](https://brewfather.app), lets you pick what's on tap, and puts
+the board on your TV through a Chromecast, with the same page available to
+anyone on your Wi-Fi. No screen mirroring, no retyping recipes.
 
-```
-Brewfather API  ──▶  brewtoscreen (Node server on your PC/Pi)
-                        ├── /admin.html   pick taps, cast to TV
-                        ├── /             tap list page (TV + phones)
-                        └── Cast protocol ──▶ Chromecast running DashCast ──▶ loads /
-```
+![The board on a 1080p TV](docs/board.png)
 
-## Setup
+**What you get**
+
+- Beer name, style, ABV, IBU, calories and carbs per pint, keg date, and a
+  glass colored by the beer's SRM, straight from Brewfather.
+- Fixed tap numbers: empty taps show as **Kicked**, and a batch that's still
+  fermenting shows as **Coming soon** until you log the kegging.
+- Things that aren't in Brewfather (seltzer, hopped tea, cider) added by hand.
+- A spare tile with live sports scores and trivia, or your brewery name.
+- One-button casting from a phone, a desktop shortcut, or any URL-capable
+  button, plus cast-on-boot for an always-on box.
+- Optional publishing of the tap list to a GitHub repo for a public website.
+
+It runs on anything with Node.js on the same network as the Chromecast: a
+laptop while you try it, a Raspberry Pi or Orange Pi for good.
+
+## Try it in five minutes
 
 1. Install [Node.js](https://nodejs.org) 20 or newer.
-2. In this folder run:
+2. Clone or download this repo, then in its folder:
 
    ```bash
    npm install
-   ```
-
-3. Copy `.env.example` to `.env` and fill in your Brewfather credentials.
-   In the Brewfather app go to **Settings → API** and click **Generate**.
-   The dialog shows two values: the **User ID** (a short 28-character string)
-   and the **API key**. Copy both. The key is only shown once, and generating
-   a new key replaces the old one, so if you closed the dialog without the
-   User ID, generate again and copy both. Give the key the **Read Batches**
-   scope.
-4. Start it:
-
-   ```bash
    npm start
    ```
 
-5. Open <http://localhost:3000/admin.html>. Tick the batches that are on tap,
-   give them tap numbers, and click **Save taps**.
-6. Click **Scan for devices**, then **Cast tap list** next to your TV.
+3. Open <http://localhost:3000/admin.html>. It asks for your Brewfather
+   **User ID** and **API key**: in the Brewfather app go to **Settings → API**,
+   click **Generate**, tick **Read Batches**, and copy both values (the key is
+   shown only once). Paste them in and click **Save and test**.
+4. Tick the batches that are on tap, give them tap numbers, **Save taps**.
+5. **Scan for devices**, then **Cast tap list** next to your TV.
 
-Without credentials the app runs with sample beers so you can try the UI.
+Without credentials it runs with sample beers so you can see the board first.
+The TV shows the admin address in its footer, so anyone at the TV knows where
+to change things.
 
-## How the Chromecast part works
+## Running it on a small board (recommended)
 
-A Chromecast cannot open a URL by itself; it only runs Cast "receiver apps".
-brewtoscreen launches **DashCast**, a public receiver app that loads whatever URL
-it is sent, and points it at this server's tap list page on your LAN
-(for example `http://192.168.1.50:3000/`). The server talks to the Chromecast
-directly over the Cast protocol, so no browser tab or screen mirroring is involved.
+A Chromecast can only be driven from a device on the same network, so some box
+has to stay on. A Raspberry Pi Zero 2 W, an Orange Pi Zero 2W, or similar
+running Debian, DietPi, Armbian or Ubuntu is plenty; it idles at a few
+megabytes of RAM. Two routes:
 
-Things to know:
+**From a laptop, in one command.** Get the board onto your Wi-Fi once (DietPi
+and Armbian ask at first boot; the board needs a screen and keyboard for that
+one step), make sure `ssh user@board-ip` works with a key
+(`ssh-copy-id user@board-ip` once), then from your clone of this repo:
 
-- The Chromecast must be on the same network as this computer and be able to
-  reach it on the port in `.env`. Allow Node through Windows Firewall when asked.
-- Each cast restarts DashCast and loads the page directly on the TV (the
-  same approach the `catt` tool uses). Once loaded, the TV keeps the page and
-  refreshes its data every minute on its own, so you only need to cast again
-  if something else took over the TV. **Frame mode** in the admin page is the
-  alternative DashCast mode; in testing, Chromecasts refused to show a plain
-  http LAN page inside the frame, so it is off by default.
-- If your computer's LAN IP changes, set `PUBLIC_URL` in `.env` to a fixed
-  address or give the computer a DHCP reservation on your router.
-- Casting ends if someone casts something else to the TV. Just cast again.
+```bash
+bash deploy/push-to-pi.sh dietpi@<board-ip>
+```
+
+It copies the project over, installs Node and dependencies if needed, writes a
+systemd service that starts on boot and restarts on crashes, and starts it. It
+also copies your `.env`, `data/taps.json` and `data/settings.json`, so the
+board starts with the same credentials, taps and default TV as the laptop.
+Run the same command again any time to ship updates.
+
+**On the board itself.**
+
+```bash
+git clone https://github.com/DrCaiola/brewtoscreen ~/brewtoscreen
+cd ~/brewtoscreen
+bash deploy/install-pi.sh
+```
+
+Then open `http://<board-ip>:3000/admin.html` from a phone and finish the
+setup there. Works as root or as a user with sudo.
+
+Tips for an always-on box:
+
+- Set `CAST_ON_START=true` in `.env` (copy `.env.example`). The board casts to
+  the default TV about five seconds after it boots. If no default TV is set
+  and there is exactly one Chromecast with a screen on the network, it uses
+  that one automatically.
+- Reserve the board's IP in your router so the address the TV loads never
+  changes.
+- `journalctl -u brewtoscreen -f` shows the log; `sudo systemctl restart
+  brewtoscreen` restarts it.
+
+## Setting one up for someone else
+
+You can hand a friend or relative a board that is plug-and-play at their
+house: it joins their Wi-Fi, casts to their Chromecast on its own, and shows
+the admin address on their TV. All they need to give you is their Wi-Fi name
+and password and, optionally, their Brewfather User ID and API key (or they
+can paste those into the admin page themselves later).
+
+With the board on *your* Wi-Fi and key-based SSH working:
+
+```bash
+bash deploy/setup-for-someone.sh dietpi@<board-ip>
+```
+
+It asks the questions, then over SSH it installs everything, adds their Wi-Fi
+as a second network (yours stays, so you can test at home), sets a hostname so
+`http://taps.local:3000` works from iPhones and Macs, sets their board title,
+enables cast-on-boot, and prints the hand-over note. At their house they plug
+it into power near the TV and wait a minute.
+
+## One button to put it on the TV
+
+On the admin page, scan and click **Make default** next to your TV. Then any
+of these casts the board:
+
+- Open `http://<host>:3000/cast.html` on a phone and press the big button.
+  Add it to the home screen for a one-tap launcher.
+- On Windows, double-click `cast-to-tv.cmd` (make a desktop shortcut).
+- Hit `http://<host>:3000/go` from anything that can open a URL: a Stream
+  Deck, a Home Assistant automation, a smart button, a Siri or Google
+  shortcut.
+- `CAST_ON_START=true` in `.env`, as above.
 
 ## The spare tile
 
@@ -66,143 +126,27 @@ With an odd number of taps one slot on the board is empty. On the admin page
 you can fill it with:
 
 - **Rotating info** (bottom-right): live scores for the leagues you tick
-  (ESPN's public scoreboard feed) and trivia questions that reveal the answer
-  on the next slide (Open Trivia DB). Tick the trivia categories you want, or
-  none for a mix of everything.
+  (ESPN's public scoreboard feed) and trivia from
+  [Open Trivia DB](https://opentdb.com) in the categories you choose, with the
+  answer on the next slide. Scores show once per trivia loop by default, or
+  after every N questions. While a game is live, a score change cuts in with
+  that game, at most once every N minutes.
 - **Brewery tile** (top-left): your brewery name in big type.
 - Nothing.
-
-Scores are cached for a minute and trivia for half an hour. Open Trivia DB
-allows one request every five seconds, so after you change categories the new
-questions take about five seconds per category to arrive.
-
-## One button to put it on the TV
-
-On the admin page, scan and click **Make default** next to your TV. Then any
-of these casts the board:
-
-- Open <http://localhost:3000/cast.html> (or the same address with your
-  computer's LAN IP from a phone) and press the big button. Add it to your
-  phone's home screen for a one-tap launcher.
-- Double-click `cast-to-tv.cmd`. Make a desktop shortcut to it.
-- Hit <http://localhost:3000/go> from anything that can open a URL: a Stream
-  Deck button, a Home Assistant automation, a smart button, a Siri/Google
-  shortcut.
-- Set `CAST_ON_START=true` in `.env` and the server casts five seconds after
-  it starts, so a shortcut that runs `npm start` also launches the TV.
-
-## Running it without your desktop
-
-A Chromecast can only be driven from a device on the same network, so some
-box on your LAN has to run this. It does not have to be your desktop:
-
-- **A small Linux board (recommended).** A Raspberry Pi Zero 2 W, an Orange
-  Pi Zero 2W, or anything similar running Debian, Ubuntu or Armbian on arm64
-  runs this comfortably; it idles at a few megabytes of RAM and does nothing
-  until you cast. Setup:
-
-  ```bash
-  git clone <your repo url> ~/brewtoscreen
-  cd ~/brewtoscreen
-  bash deploy/install-pi.sh
-  nano .env     # add Brewfather credentials, set CAST_ON_START=true if you like
-  sudo systemctl restart brewtoscreen@$USER
-  ```
-
-  The install script installs Node 22 if needed, installs dependencies, and
-  writes a systemd service (`brewtoscreen`) so it starts on boot and restarts
-  if it crashes. It works as root or as a sudo user. The board must be on the
-  same Wi-Fi as the Chromecast. Give it a DHCP reservation on your router so
-  its address, and therefore the URL the TV loads, never changes.
-
-  **From the laptop in one command.** Once key-based SSH works
-  (`ssh-copy-id user@board` once), this copies the project over, installs,
-  and restarts the service, and is also how you ship updates later:
-
-  ```bash
-  bash deploy/push-to-pi.sh dietpi@192.168.86.53
-  ```
-
-  It copies your `.env` and `data/taps.json` too, so the board starts with
-  the same credentials, taps, and default TV as the laptop.
-
-### DietPi note
-
-DietPi works the same way. Its SSH server is Dropbear, which is fine. The
-default user is `dietpi` (sudo without a password) and root login is also
-allowed, so either `dietpi@<ip>` or `root@<ip>` works for the push script.
-
-### Orange Pi Zero 2W, step by step from a Windows laptop
-
-You need: the board, a microSD card (8 GB or more), a USB-C power supply
-(5V/2A or better), and for the first boot only a mini-HDMI cable to a TV plus
-a USB keyboard on a USB-C OTG adapter. The board has no Ethernet, so Wi-Fi
-has to be set up once at the keyboard; after that everything is done over SSH
-from the laptop.
-
-1. **Flash the card.** Download the Armbian image for the Orange Pi Zero 2W
-   from <https://www.armbian.com/orange-pi-zero-2w/> (the minimal/CLI
-   Bookworm build is plenty). Write it to the microSD with
-   [balenaEtcher](https://etcher.balena.io/) or Rufus.
-2. **First boot at the TV.** Insert the card, connect HDMI and keyboard,
-   power on. Log in as `root` with password `1234`. Armbian's first-run
-   wizard asks you to set a root password and create a normal user (call it
-   `brew`). When it asks about networking, pick your Wi-Fi and enter the
-   password. If it does not ask, run `nmtui`, choose *Activate a connection*,
-   and join your Wi-Fi. Note the IP it gets (`hostname -I`).
-3. **Reserve its IP.** In your router (Google Home app for Google Wifi:
-   Wi-Fi → Devices → the board → Settings → Reserve IP) reserve that address
-   so it never changes.
-4. **Copy the project over from the laptop.** In a terminal on this laptop:
-
-   ```bash
-   scp -r C:/dev/brewtoscreen/{server.js,package.json,package-lock.json,lib,public,deploy,.env.example,.env,data} brew@<board-ip>:~/brewtoscreen/
-   ```
-
-   (Create the folder first with `ssh brew@<board-ip> mkdir -p brewtoscreen`.)
-   Or, if you have pushed the repo to GitHub, `ssh` in and
-   `git clone <repo url> ~/brewtoscreen` instead.
-5. **Install and start.**
-
-   ```bash
-   ssh brew@<board-ip>
-   cd ~/brewtoscreen
-   bash deploy/install-pi.sh
-   nano .env        # Brewfather credentials; set CAST_ON_START=true
-   sudo systemctl restart brewtoscreen@brew
-   ```
-
-6. **Point the TV at the board.** Open `http://<board-ip>:3000/admin.html`
-   from any device on the Wi-Fi, scan, and make your TV the default. Unplug
-   the keyboard and HDMI; the board can live anywhere with power and Wi-Fi.
-
-To update later, repeat step 4 and `sudo systemctl restart brewtoscreen@brew`.
-
-What will not work: hosting only on GitHub Pages with no LAN box, because
-nothing could talk to the Chromecast, and the Brewfather API key must not be
-exposed in a public page. What does work is publishing a snapshot of the tap
-list to a static site; see the next section.
-
-## Web page for guests
-
-Anyone on your Wi-Fi can open the same address the TV uses. To share it beyond
-your network, put it behind something like Tailscale Funnel or a Cloudflare
-Tunnel, which gives you an HTTPS address without opening ports on your router.
 
 ## Publishing the tap list to a website
 
 brewtoscreen can write the tap list as a JSON file into a GitHub repo, so a
 static site (GitHub Pages, for example) can show what is on tap without
 anyone reaching your LAN. It publishes a few seconds after you save taps or
-custom items in the admin page, once at startup, and every
-`PUBLISH_EVERY_HOURS` so Brewfather-side edits (a measured ABV, a renamed
-batch) get through too. Commits are skipped when nothing changed.
+custom items, once at startup, and every `PUBLISH_EVERY_HOURS`. Commits are
+skipped when nothing changed.
 
 1. On GitHub, as the account that owns the website repo, create a
    **fine-grained** personal access token at
    <https://github.com/settings/personal-access-tokens/new>: repository
-   access *Only select repositories* with just the site repo, and under
-   *Repository permissions* set **Contents** to *Read and write*.
+   access *Only select repositories* with just the site repo, and
+   **Contents: Read and write**.
 2. In `.env` on the box running brewtoscreen:
 
    ```
@@ -225,23 +169,59 @@ The file looks like:
   "taps": [
     { "tap": 1, "label": null, "beer": { "name": "Kinda Italian", "style": "Italian-Style Pilsener",
       "abv": 5.4, "ibu": 33, "srm": 3.2, "calories": 202, "carbs": 15.5, "notes": null,
-      "custom": false, "kind": null, "brewDate": 1783051200000 } },
+      "custom": false, "kind": null, "brewDate": 1783051200000, "bottlingDate": 1784764800000,
+      "comingSoon": false } },
     { "tap": 4, "label": null, "beer": null }
   ],
   "updatedAt": 1791756295455
 }
 ```
 
-`beer: null` is a kicked tap. Custom items (seltzer, hopped tea) have
-`custom: true` and a `kind`. Spare-tile settings and cast state are never
-published.
+`beer: null` is a kicked tap. Custom items have `custom: true` and a `kind`.
+
+## How the Chromecast part works
+
+A Chromecast cannot open a URL by itself; it only runs Cast "receiver apps".
+brewtoscreen launches **DashCast**, a public receiver app that loads whatever
+URL it is sent, and points it at this server's board page on your LAN. The
+server speaks the Cast protocol directly, so nothing is mirrored from a
+computer. Each cast restarts DashCast and loads the page full-screen, which is
+the reliable mode (the same approach the `catt` tool uses); once loaded, the
+TV keeps the page and refreshes its data every minute by itself. Casting ends
+if someone casts something else to the TV; just cast again.
+
+Nutrition: calories and carbs are computed per US pint from each batch's
+gravities (measured values when you logged them) with the standard formulas,
+which is the same math Brewfather uses.
+
+## Configuration
+
+Everything optional lives in `.env` (see `.env.example`): port, a fixed
+`PUBLIC_URL` for the TV to load, which Brewfather batch statuses to list,
+cache time, cast-on-start, and the publishing settings. Brewfather credentials
+can be in `.env` or entered on the admin page; the admin page's copy is saved
+to `data/settings.json`. Taps, custom items, the default TV and spare-tile
+settings are in `data/taps.json`. None of these files are committed.
 
 ## Files
 
-- `server.js` - Express server, tap state, API routes
-- `lib/brewfather.js` - Brewfather v2 client with caching (API limit: 500 calls/hour)
+- `server.js` - Express server, state, API routes
+- `lib/brewfather.js` - Brewfather v2 client with caching and nutrition math
 - `lib/cast.js` - Chromecast discovery (mDNS) and DashCast launching
-- `lib/publish.js` - pushes the tap list to a GitHub repo for a static website
-- `public/index.html` - the tap list board
+- `lib/extras.js` - scores and trivia for the spare tile
+- `lib/publish.js` - pushes the tap list to a GitHub repo
+- `public/index.html` - the board
 - `public/admin.html` - admin page
-- `data/taps.json` - your saved tap assignments (created on first save)
+- `public/cast.html` - one-button cast page
+- `deploy/` - install, push and hand-over scripts for a Linux board
+
+## Contributing
+
+Issues and pull requests are welcome. It is plain Node and vanilla HTML with
+no build step: `npm install`, `npm start`, edit, refresh. Please keep it that
+way; the point is something a homebrewer can run on a $20 board and fix at
+midnight.
+
+## License
+
+MIT, see [LICENSE](LICENSE).

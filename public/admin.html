@@ -46,6 +46,18 @@
   <p class="sub">Pick what's on tap from your Brewfather batches, then send the board to the TV.
     Guests can open <a id="displayLink" href="/" target="_blank">the tap list</a> on their phones.</p>
 
+  <section id="setupSection" hidden>
+    <h2>Connect Brewfather</h2>
+    <p class="muted">One-time setup. In the Brewfather app go to <strong>Settings → API</strong>, click <strong>Generate</strong>,
+      tick <strong>Read Batches</strong>, and copy the two values it shows. The key is only shown once.</p>
+    <div class="row">
+      <label>User ID <input type="text" id="suUser" autocomplete="off" style="width:260px"></label>
+      <label>API key <input type="password" id="suKey" autocomplete="off" style="width:320px"></label>
+      <button class="primary" id="suSave">Save and test</button>
+    </div>
+    <div class="msg" id="setupMsg"></div>
+  </section>
+
   <section>
     <h2>Taps</h2>
     <div class="row">
@@ -239,6 +251,27 @@
   });
 
   $('refreshBatches').addEventListener('click', () => loadBatches(true));
+
+  // ---- first-run setup ----
+  async function loadSetup() {
+    try {
+      const s = await api('/api/setup');
+      $('setupSection').hidden = s.configured;
+      if (!s.configured) $('setupSection').scrollIntoView({ block: 'start' });
+    } catch { /* leave hidden */ }
+  }
+  $('suSave').addEventListener('click', async () => {
+    $('suSave').disabled = true; msg('setupMsg', 'Checking with Brewfather…');
+    try {
+      await api('/api/setup', { method: 'POST', body: JSON.stringify({ userId: $('suUser').value, apiKey: $('suKey').value }) });
+      msg('setupMsg', 'Connected. Your batches are loading below.', 'ok');
+      $('suKey').value = '';
+      setTimeout(() => { $('setupSection').hidden = true; }, 2500);
+      await loadBatches(true);
+    } catch (err) { msg('setupMsg', err.message, 'err'); }
+    finally { $('suSave').disabled = false; }
+  });
+  loadSetup();
 
   // ---- Custom items ----
   let customItems = [];

@@ -11,6 +11,7 @@ tar --exclude=node_modules --exclude=.git --exclude='.claude' -cz \
   server.js package.json package-lock.json lib public deploy .env.example README.md \
   $( [ -f .env ] && echo .env ) \
   $( [ -f data/taps.json ] && echo data/taps.json ) \
+  $( [ -f data/settings.json ] && echo data/settings.json ) \
 | ssh "$TARGET" 'mkdir -p ~/brewtoscreen && tar -xz -C ~/brewtoscreen'
 
 echo ">> installing / starting on the board"
