@@ -8,6 +8,7 @@ import { BrewfatherClient, SAMPLE_BATCHES } from './lib/brewfather.js';
 import { discoverDevices, castUrl, stopCasting, deviceStatus } from './lib/cast.js';
 import { getScores, getTrivia, getTriviaCategories, LEAGUE_OPTIONS } from './lib/extras.js';
 import { Publisher, toSnapshot } from './lib/publish.js';
+import { scanForBoards, startProvision, currentJob } from './lib/provision.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
@@ -243,6 +244,21 @@ app.post('/api/publish', wrap(async (req, res) => {
   if (!publisher.configured) return res.status(400).json({ error: 'Publishing is not set up. Add PUBLISH_GITHUB_TOKEN and PUBLISH_REPO to .env.' });
   const result = await publisher.publish(await snapshot(), { force: Boolean(req.body?.force) });
   res.json({ ok: true, ...result, url: publisher.url });
+}));
+
+// Set up a board for someone else, over SSH from here (see lib/provision.js).
+app.get('/api/provision/scan', wrap(async (req, res) => res.json({ boards: await scanForBoards() })));
+app.get('/api/provision/status', (req, res) => res.json({ job: currentJob() }));
+app.post('/api/provision', wrap(async (req, res) => {
+  const b = req.body ?? {};
+  const id = startProvision({
+    host: b.host, user: b.user, password: b.password,
+    wifiSsid: b.wifiSsid ?? '', wifiPsk: b.wifiPsk ?? '',
+    bfUserId: String(b.bfUserId ?? '').trim(), bfApiKey: String(b.bfApiKey ?? '').trim(),
+    title: String(b.title ?? '').slice(0, 80), hostname: String(b.hostname ?? '').trim().toLowerCase(),
+    newPassword: b.newPassword ?? '',
+  });
+  res.json({ ok: true, id });
 }));
 
 // Spare-tile settings and content.

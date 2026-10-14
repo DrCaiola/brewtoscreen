@@ -95,17 +95,21 @@ the admin address on their TV. All they need to give you is their Wi-Fi name
 and password and, optionally, their Brewfather User ID and API key (or they
 can paste those into the admin page themselves later).
 
-With the board on *your* Wi-Fi and key-based SSH working:
+Flash the card, get the board onto *your* Wi-Fi once, then on your own
+brewtoscreen's admin page use **Set up a board for someone**: click *Find
+boards on this Wi-Fi*, pick it, enter the board's login, their Wi-Fi, their
+Brewfather details if you have them, a title and a hostname, and press *Set it
+up*. No terminal; it runs over SSH from your brewtoscreen and shows a live
+log. The same thing from a terminal is `bash deploy/setup-for-someone.sh
+dietpi@<board-ip>`.
 
-```bash
-bash deploy/setup-for-someone.sh dietpi@<board-ip>
-```
-
-It asks the questions, then over SSH it installs everything, adds their Wi-Fi
-as a second network (yours stays, so you can test at home), sets a hostname so
+Either way it installs everything, adds their Wi-Fi as a second network
+(yours stays, so you can test at home), sets a hostname so
 `http://taps.local:3000` works from iPhones and Macs, sets their board title,
 enables cast-on-boot, and prints the hand-over note. At their house they plug
-it into power near the TV and wait a minute.
+it into power near the TV and wait a minute. The board's login needs
+passwordless sudo (DietPi's `dietpi`, Raspberry Pi OS's default user) or use
+`root`.
 
 ## One button to put it on the TV
 

@@ -17,7 +17,7 @@
   .sub { color: var(--muted); margin: 0 0 24px; }
   section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-bottom: 20px; }
   .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-  input[type=text], input[type=number] { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: inherit; }
+  input[type=text], input[type=number], input[type=password], select { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: inherit; }
   input[type=number] { width: 64px; }
   button { font: inherit; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
   button.primary { background: var(--accent); border-color: var(--accent); color: #1a1405; font-weight: 600; }
@@ -143,6 +143,37 @@
     </div>
     <div id="devices"></div>
     <div class="msg" id="castMsg"></div>
+  </section>
+
+  <section>
+    <h2>Set up a board for someone</h2>
+    <p class="muted">Turn a freshly flashed Raspberry Pi / Orange Pi (DietPi, Raspberry Pi OS, Armbian) into a plug-and-play tap board for a friend.
+      The board must be on <em>this</em> Wi-Fi right now with SSH on. Everything below happens from here over SSH; at their house they just plug it in.</p>
+    <div class="row">
+      <button id="pvScan">Find boards on this Wi-Fi</button>
+      <span id="pvBoards"></span>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <label>Board address <input type="text" id="pvHost" placeholder="192.168.1.50" style="width:150px"></label>
+      <label>Login <input type="text" id="pvUser" value="dietpi" style="width:90px"></label>
+      <label>Password <input type="password" id="pvPass" autocomplete="off" style="width:130px"></label>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <label>Their Wi-Fi name <input type="text" id="pvSsid" style="width:170px"></label>
+      <label>Their Wi-Fi password <input type="password" id="pvPsk" autocomplete="off" style="width:170px"></label>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <label>Their Brewfather User ID <input type="text" id="pvBfUser" autocomplete="off" style="width:240px" placeholder="(optional, they can do it later)"></label>
+      <label>API key <input type="password" id="pvBfKey" autocomplete="off" style="width:220px"></label>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <label>Board title <input type="text" id="pvTitle" placeholder="Dad's Taps" maxlength="80"></label>
+      <label>Hostname <input type="text" id="pvHostname" value="taps" style="width:110px"></label>
+      <label>New board password <input type="password" id="pvNewPass" autocomplete="off" style="width:140px" placeholder="(optional)"></label>
+      <button class="primary" id="pvGo">Set it up</button>
+    </div>
+    <pre id="pvLog" class="muted" style="display:none; margin-top:12px; max-height:320px; overflow:auto; white-space:pre-wrap; font-size:12px; background:rgba(127,127,127,.08); padding:10px; border-radius:8px"></pre>
+    <div class="msg" id="pvMsg"></div>
   </section>
 
   <section id="publishSection" hidden>
@@ -447,6 +478,56 @@
     if (!host) return msg('castMsg', 'Enter the Chromecast IP first.', 'err');
     cast(host, 8009, host);
   });
+
+  // ---- set up a board for someone ----
+  $('pvScan').addEventListener('click', async () => {
+    $('pvScan').disabled = true; $('pvBoards').textContent = 'Scanning the whole Wi-Fi for SSH (about 10 seconds)…';
+    try {
+      const { boards } = await api('/api/provision/scan');
+      $('pvBoards').innerHTML = boards.length
+        ? boards.map((b) => `<button class="pvPick" data-host="${esc(b.host)}">${esc(b.host)}</button> <span class="muted">${esc(b.hint)}</span>`).join(' &nbsp; ')
+        : '<span class="muted">No SSH servers found. Is the board powered on and on this Wi-Fi?</span>';
+    } catch (err) { $('pvBoards').textContent = err.message; }
+    finally { $('pvScan').disabled = false; }
+  });
+  $('pvBoards').addEventListener('click', (e) => {
+    if (e.target.classList.contains('pvPick')) { $('pvHost').value = e.target.dataset.host; $('pvPass').focus(); }
+  });
+
+  let pvTimer = null;
+  async function pvPoll() {
+    try {
+      const { job } = await api('/api/provision/status');
+      if (!job) return;
+      $('pvLog').style.display = '';
+      $('pvLog').textContent = job.log.join('\n');
+      $('pvLog').scrollTop = $('pvLog').scrollHeight;
+      if (job.done) {
+        clearInterval(pvTimer); pvTimer = null; $('pvGo').disabled = false;
+        msg('pvMsg', job.ok ? 'Done. The board is ready to hand over; the note at the end of the log says what to tell them.' : `Failed: ${job.error}`, job.ok ? 'ok' : 'err');
+      }
+    } catch (err) { msg('pvMsg', err.message, 'err'); }
+  }
+  $('pvGo').addEventListener('click', async () => {
+    const body = {
+      host: $('pvHost').value.trim(), user: $('pvUser').value.trim(), password: $('pvPass').value,
+      wifiSsid: $('pvSsid').value, wifiPsk: $('pvPsk').value,
+      bfUserId: $('pvBfUser').value, bfApiKey: $('pvBfKey').value,
+      title: $('pvTitle').value, hostname: $('pvHostname').value.trim(), newPassword: $('pvNewPass').value,
+    };
+    if (!body.host || !body.password) return msg('pvMsg', 'Board address and password are needed.', 'err');
+    if (body.wifiSsid && !body.wifiPsk) return msg('pvMsg', 'Enter their Wi-Fi password too, or clear the Wi-Fi name.', 'err');
+    if (body.bfUserId && !body.bfApiKey) return msg('pvMsg', 'Enter their API key too, or clear the User ID.', 'err');
+    $('pvGo').disabled = true; msg('pvMsg', 'Working… this takes a few minutes on a fresh board.');
+    $('pvLog').style.display = ''; $('pvLog').textContent = '';
+    try {
+      await api('/api/provision', { method: 'POST', body: JSON.stringify(body) });
+      for (const id of ['pvPass', 'pvPsk', 'pvBfKey', 'pvNewPass']) $(id).value = '';
+      pvTimer = setInterval(pvPoll, 1500);
+    } catch (err) { msg('pvMsg', err.message, 'err'); $('pvGo').disabled = false; }
+  });
+  // If a setup is still running from an earlier page load, keep showing it.
+  api('/api/provision/status').then(({ job }) => { if (job && !job.done) { $('pvGo').disabled = true; pvTimer = setInterval(pvPoll, 1500); } }).catch(() => {});
 
   // ---- website publishing ----
   function describePublish(p) {
