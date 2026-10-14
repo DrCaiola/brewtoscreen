@@ -302,6 +302,7 @@
     document.getElementById('title').textContent = data.title || 'On Tap';
     document.title = data.title || 'On Tap';
     extra = data.extra || { mode: 'none' };
+    showSiteUrl(data.siteUrl);
     const main = document.getElementById('taps');
     const taps = data.taps || [];
     const nothingAssigned = !taps.some((t) => t.beer);
@@ -480,6 +481,10 @@
     return `${location.origin}/admin.html`;
   }
   document.getElementById('adminHint').textContent = `Change taps at ${adminUrl()}`;
+  function showSiteUrl(url) {
+    const hint = document.getElementById('adminHint');
+    hint.textContent = url ? `Online at ${url.replace(/^https?:\/\//, '')}  ·  Change taps at ${adminUrl()}` : `Change taps at ${adminUrl()}`;
+  }
 
   function tickClock() {
     document.getElementById('clock').textContent =

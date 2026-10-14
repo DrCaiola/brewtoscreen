@@ -151,19 +151,16 @@ skipped when nothing changed.
    <https://github.com/settings/personal-access-tokens/new>: repository
    access *Only select repositories* with just the site repo, and
    **Contents: Read and write**.
-2. In `.env` on the box running brewtoscreen:
+2. On the admin page, in **Website**, enter the repo as `owner/name`, the
+   branch, the file path, how often to republish, the token, and optionally
+   the public URL where the page is shown (it appears in the board's footer).
+   **Save and test** checks that the token can write to the repo before
+   saving. The token is stored in `data/settings.json` on the box.
 
-   ```
-   PUBLISH_GITHUB_TOKEN=github_pat_...
-   PUBLISH_REPO=owner/site-repo
-   PUBLISH_PATH=taps.json
-   PUBLISH_BRANCH=main
-   PUBLISH_EVERY_HOURS=24
-   ```
-
-3. Restart. The admin page gains a **Website** section with the last publish
-   result and a *Publish to website now* button. `GET /api/publish/preview`
-   shows exactly what gets written.
+   The same settings can be put in `.env` instead (`PUBLISH_GITHUB_TOKEN`,
+   `PUBLISH_REPO`, `PUBLISH_PATH`, `PUBLISH_BRANCH`, `PUBLISH_EVERY_HOURS`,
+   `PUBLISH_SITE_URL`); when they are, the admin page shows them read-only.
+   `GET /api/publish/preview` shows exactly what gets written.
 
 The file looks like:
 

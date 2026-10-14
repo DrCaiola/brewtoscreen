@@ -31,13 +31,31 @@ function makeBrewfather() {
 let brewfather = makeBrewfather();
 
 // Optional: push the tap list to a GitHub repo (e.g. the brewery's GitHub Pages site).
-const publisher = new Publisher({
-  token: process.env.PUBLISH_GITHUB_TOKEN,
-  repo: process.env.PUBLISH_REPO,
-  path: process.env.PUBLISH_PATH || 'taps.json',
-  branch: process.env.PUBLISH_BRANCH || 'main',
-  everyHours: process.env.PUBLISH_EVERY_HOURS ?? 24,
-});
+// Settings come from .env, or from the admin page (saved in data/settings.json).
+// Values saved from the admin page win; .env is the fallback (and the only
+// option if nobody ever touches the form).
+function publishConfig() {
+  const s = settings.publish;
+  if (s && (s.repo || s.token)) {
+    return { token: s.token || '', repo: s.repo || '', path: s.path || 'taps.json', branch: s.branch || 'main',
+      everyHours: s.everyHours ?? 24, siteUrl: s.siteUrl || '', fromEnv: false };
+  }
+  return {
+    token: process.env.PUBLISH_GITHUB_TOKEN || '',
+    repo: process.env.PUBLISH_REPO || '',
+    path: process.env.PUBLISH_PATH || 'taps.json',
+    branch: process.env.PUBLISH_BRANCH || 'main',
+    everyHours: process.env.PUBLISH_EVERY_HOURS ?? 24,
+    siteUrl: process.env.PUBLISH_SITE_URL || '',
+    fromEnv: Boolean(process.env.PUBLISH_REPO),
+  };
+}
+let publisher = new Publisher(publishConfig());
+
+async function saveSettings() {
+  await fs.mkdir(path.dirname(SETTINGS_FILE), { recursive: true });
+  await fs.writeFile(SETTINGS_FILE, JSON.stringify(settings, null, 2), { mode: 0o600 });
+}
 
 // ---- tap state (persisted to data/taps.json) --------------------------------
 // { title: string, taps: [{ tap: number, batchId: string, label?: string }], lastCast: {...} }
@@ -98,7 +116,7 @@ async function tapList() {
   } else {
     taps = [...assigned.values()].sort((a, b) => a.tap - b.tap);
   }
-  return { title: state.title, taps, extra: state.extra, source, updatedAt: Date.now() };
+  return { title: state.title, taps, extra: state.extra, source, siteUrl: publishConfig().siteUrl || null, updatedAt: Date.now() };
 }
 
 // The public snapshot for the website, and a debounced publish after edits.
@@ -186,8 +204,7 @@ app.post('/api/setup', wrap(async (req, res) => {
     return res.status(400).json({ error: err.message });
   }
   settings = { ...settings, brewfatherUserId: userId, brewfatherApiKey: apiKey };
-  await fs.mkdir(path.dirname(SETTINGS_FILE), { recursive: true });
-  await fs.writeFile(SETTINGS_FILE, JSON.stringify(settings, null, 2), { mode: 0o600 });
+  await saveSettings();
   brewfather = makeBrewfather();
   // Anything that was pointing at sample beers no longer applies.
   state.taps = state.taps.filter((t) => !t.batchId.startsWith('sample-'));
@@ -233,10 +250,42 @@ app.delete('/api/custom/:id', wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
-// Website publishing (GitHub). GET shows status, POST publishes right now.
+// Website publishing (GitHub). GET shows status, POST publishes right now,
+// PUT /settings changes the target (token is kept if left blank).
 app.get('/api/publish', (req, res) => {
-  res.json({ configured: publisher.configured, repo: publisher.repo ?? null, path: publisher.path, url: publisher.url, everyHours: publisher.everyMs / 3600000, last: publisher.last });
+  const c = publishConfig();
+  res.json({
+    configured: publisher.configured, repo: c.repo || null, path: c.path, branch: c.branch,
+    everyHours: Number(c.everyHours) || 0, siteUrl: c.siteUrl || null, hasToken: Boolean(c.token),
+    fromEnv: c.fromEnv, url: publisher.url, last: publisher.last,
+  });
 });
+
+app.put('/api/publish/settings', wrap(async (req, res) => {
+  const b = req.body ?? {};
+  const repo = String(b.repo ?? '').trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '').replace(/\/+$/, '');
+  if (repo && !/^[\w.-]+\/[\w.-]+$/.test(repo)) return res.status(400).json({ error: 'Repo should look like owner/name.' });
+  // Keep the previous token when the field is left blank (settings first, then .env).
+  const prev = settings.publish?.token ? settings.publish : { token: process.env.PUBLISH_GITHUB_TOKEN || '' };
+  settings.publish = {
+    token: String(b.token ?? '').trim() || prev.token || '',
+    repo,
+    path: String(b.path ?? '').trim().replace(/^\/+/, '') || 'taps.json',
+    branch: String(b.branch ?? '').trim() || 'main',
+    everyHours: Math.min(168, Math.max(0, Number(b.everyHours) || 0)),
+    siteUrl: String(b.siteUrl ?? '').trim().slice(0, 200),
+  };
+  if (b.clearToken) settings.publish.token = '';
+  const next = new Publisher(publishConfig());
+  if (next.configured) {
+    try { await next.test(); } catch (err) { return res.status(400).json({ error: err.message }); }
+  }
+  await saveSettings();
+  publisher.stop();
+  publisher = next;
+  if (publisher.configured) { publisher.start(snapshot); publisher.schedule(snapshot, 3000); }
+  res.json({ ok: true, configured: publisher.configured });
+}));
 
 app.get('/api/publish/preview', wrap(async (req, res) => res.json(await snapshot())));
 

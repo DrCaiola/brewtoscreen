@@ -176,13 +176,24 @@
     <div class="msg" id="pvMsg"></div>
   </section>
 
-  <section id="publishSection" hidden>
+  <section id="publishSection">
     <h2>Website</h2>
-    <p class="muted" id="publishInfo"></p>
+    <p class="muted">Optional. brewtoscreen can write the tap list as a JSON file into a GitHub repo, so a static site (GitHub Pages, your own domain) shows what's on tap
+      to people who aren't on your Wi-Fi. Make a <a href="https://github.com/settings/personal-access-tokens/new" target="_blank">fine-grained token</a>
+      limited to that one repo with <strong>Contents: read and write</strong>.</p>
     <div class="row">
-      <button id="publishNow">Publish to website now</button>
-      <span class="muted">Happens on its own a few seconds after you save taps or custom items.</span>
+      <label>Repo <input type="text" id="pbRepo" placeholder="owner/site-repo" style="width:200px"></label>
+      <label>Branch <input type="text" id="pbBranch" value="main" style="width:90px"></label>
+      <label>File <input type="text" id="pbPath" value="taps.json" style="width:140px"></label>
+      <label>Republish every <input type="number" id="pbEvery" min="0" max="168" value="24"> h</label>
     </div>
+    <div class="row" style="margin-top:10px">
+      <label>Token <input type="password" id="pbToken" autocomplete="off" style="width:280px" placeholder="github_pat_… (leave blank to keep)"></label>
+      <label>Public page URL <input type="text" id="pbSite" placeholder="https://example.com/taps" style="width:240px"></label>
+      <button class="primary" id="pbSave">Save and test</button>
+      <button id="publishNow">Publish now</button>
+    </div>
+    <p class="muted" id="publishInfo" style="margin:10px 0 0"></p>
     <div class="msg" id="publishMsg"></div>
   </section>
 </div>
@@ -531,6 +542,11 @@
 
   // ---- website publishing ----
   function describePublish(p) {
+    $('pbRepo').value = p.repo || ''; $('pbBranch').value = p.branch || 'main'; $('pbPath').value = p.path || 'taps.json';
+    $('pbEvery').value = p.everyHours ?? 24; $('pbSite').value = p.siteUrl || '';
+    $('pbToken').placeholder = p.hasToken ? 'saved (leave blank to keep)' : 'github_pat_…';
+    $('publishNow').disabled = !p.configured;
+    if (!p.configured) { $('publishInfo').textContent = 'Not set up. Fill in a repo and token to turn it on.'; return; }
     const when = p.last?.at ? new Date(p.last.at).toLocaleString() : null;
     let last = 'Not published since the server started.';
     if (p.last) {
@@ -538,18 +554,26 @@
       else if (p.last.skipped) last = `Checked at ${when}; the website already had this tap list.`;
       else last = `Published at ${when}.`;
     }
-    $('publishInfo').innerHTML = `The tap list is written to <a href="${esc(p.url)}" target="_blank">${esc(p.repo)}/${esc(p.path)}</a>` +
-      (p.everyHours ? ` and refreshed every ${esc(p.everyHours)} h. ` : '. ') + esc(last);
+    $('publishInfo').innerHTML = `${p.fromEnv ? 'Currently from .env; saving here overrides it. ' : ''}The tap list is written to <a href="${esc(p.url)}" target="_blank">${esc(p.repo)}/${esc(p.path)}</a>` +
+      (p.everyHours ? ` and refreshed every ${esc(p.everyHours)} h` : '') +
+      (p.siteUrl ? `; shown at <a href="${esc(p.siteUrl)}" target="_blank">${esc(p.siteUrl)}</a>` : '') + '. ' + esc(last);
   }
 
   async function loadPublish() {
-    try {
-      const p = await api('/api/publish');
-      if (!p.configured) return;
-      $('publishSection').hidden = false;
-      describePublish(p);
-    } catch { /* leave the section hidden */ }
+    try { describePublish(await api('/api/publish')); } catch (err) { msg('publishMsg', err.message, 'err'); }
   }
+
+  $('pbSave').addEventListener('click', async () => {
+    $('pbSave').disabled = true; msg('publishMsg', 'Checking the repo and token…');
+    try {
+      const body = { repo: $('pbRepo').value, branch: $('pbBranch').value, path: $('pbPath').value, everyHours: Number($('pbEvery').value), token: $('pbToken').value, siteUrl: $('pbSite').value };
+      const r = await api('/api/publish/settings', { method: 'PUT', body: JSON.stringify(body) });
+      $('pbToken').value = '';
+      msg('publishMsg', r.configured ? 'Saved and verified. Publishing in a few seconds.' : 'Saved. Publishing is off until a repo and token are set.', 'ok');
+      setTimeout(loadPublish, 4000);
+    } catch (err) { msg('publishMsg', err.message, 'err'); }
+    finally { $('pbSave').disabled = false; }
+  });
 
   $('publishNow').addEventListener('click', async () => {
     const btn = $('publishNow');
