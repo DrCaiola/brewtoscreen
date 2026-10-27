@@ -48,12 +48,82 @@ to change things.
 A Chromecast can only be driven from a device on the same network, so some box
 has to stay on. A Raspberry Pi Zero 2 W, an Orange Pi Zero 2W, or similar
 running Debian, DietPi, Armbian or Ubuntu is plenty; it idles at a few
-megabytes of RAM. Two routes:
+megabytes of RAM. Going from a blank card to a running board is three steps.
 
-**From a laptop, in one command.** Get the board onto your Wi-Fi once (DietPi
-and Armbian ask at first boot; the board needs a screen and keyboard for that
-one step), make sure `ssh user@board-ip` works with a key
-(`ssh-copy-id user@board-ip` once), then from your clone of this repo:
+**You need:** the board, a microSD card of 8 GB or more, a USB-C power supply
+of 5 V / 2 A or better, and a laptop. For the Orange Pi route also a
+mini-HDMI cable and a USB keyboard on a USB-C OTG adapter, for the first boot
+only.
+
+### 1. Flash the card and get the board on Wi-Fi
+
+**Option A: Raspberry Pi with Raspberry Pi Imager (no keyboard or screen).**
+
+1. Install [Raspberry Pi Imager](https://www.raspberrypi.com/software/) and
+   pick your board, then **Raspberry Pi OS (other) → Raspberry Pi OS Lite
+   (64-bit)**, then the card.
+2. When it offers OS customisation, set a hostname (e.g. `taps`), a username
+   and password, your Wi-Fi name, password and country, and turn on **SSH**.
+   If you already have an SSH key, choose public-key login and paste the
+   contents of `~/.ssh/id_ed25519.pub`; that also skips step 2 below.
+3. Write the card, put it in the board, power it on, and give it two minutes.
+   It shows up on your Wi-Fi as `taps.local`, or find its IP in your router's
+   device list.
+
+**Option B: Orange Pi Zero 2W with DietPi (the setup this project runs on).**
+
+1. Download the Orange Pi Zero 2W image from [dietpi.com](https://dietpi.com/#download)
+   and flash it with [balenaEtcher](https://etcher.balena.io/) or
+   [Rufus](https://rufus.ie/). If a current image refuses to boot, people on
+   the DietPi forum report the Orange Pi Zero 3 image works on the Zero 2W.
+2. Wi-Fi, the easy way, if Windows can open the card after flashing: edit
+   `dietpi.txt` to set `AUTO_SETUP_NET_WIFI_ENABLED=1`, and in
+   `dietpi-wifi.txt` set `aWIFI_SSID[0]` and `aWIFI_KEY[0]` to your network
+   name and password. Then it joins on its own at first boot.
+3. Wi-Fi, the way we did it, if the card shows no readable folder (the Zero 2W
+   image is a single Linux partition Windows can't open): plug the board into
+   a TV with the mini-HDMI cable, attach the keyboard through the OTG adapter,
+   and power it on. First boot takes a couple of minutes. Log in as `root`
+   with password `dietpi`. The first-run setup makes you change the `root` and
+   `dietpi` passwords and asks about an optional survey. To join Wi-Fi, use
+   **dietpi-config → Network Options: Adapters → WiFi**, scan, pick your
+   network, and enter the password. If no Wi-Fi adapter shows up, reboot once
+   and try again.
+4. Run `hostname -I` and note the address, then unplug the keyboard and HDMI.
+   SSH is already on (DietPi uses Dropbear), and the `dietpi` user has
+   passwordless sudo, which is what the install scripts need.
+
+Either way, reserve the board's address in your router (in the Google Home
+app: Wi-Fi → Devices → the board → Reserve IP) so the URL the TV loads never
+changes.
+
+### 2. Let your laptop log in without a password
+
+Skip this if you used a key in Imager, or if you'll use the admin page's
+**Set up a board for someone**, which logs in with the password instead.
+
+If you have never made an SSH key, run `ssh-keygen -t ed25519` and press
+Enter through the questions. Then copy it to the board. In Git Bash, macOS or
+Linux:
+
+```bash
+ssh-copy-id dietpi@<board-ip>
+```
+
+In Windows PowerShell, which has no `ssh-copy-id`:
+
+```powershell
+type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh dietpi@<board-ip> "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys"
+```
+
+It asks for the board's password once. After that `ssh dietpi@<board-ip>`
+logs straight in. Use your own username in place of `dietpi` on Raspberry Pi
+OS.
+
+### 3. Install brewtoscreen
+
+**From a laptop, in one command.** From your clone of this repo (in Git Bash
+on Windows):
 
 ```bash
 bash deploy/push-to-pi.sh dietpi@<board-ip>
@@ -76,6 +146,14 @@ bash deploy/install-pi.sh
 Then open `http://<board-ip>:3000/admin.html` from a phone and finish the
 setup there. Works as root or as a user with sudo.
 
+**For someone else's house,** use the admin page or script described in
+[Setting one up for someone else](#setting-one-up-for-someone-else) instead.
+
+For reference, the board this project was built on is an Orange Pi Zero 2W
+(4 GB) with a 64 GB card running DietPi on Debian 13, set up with option B,
+then the PowerShell key copy above, then `push-to-pi.sh` from Git Bash on a
+Windows laptop.
+
 Tips for an always-on box:
 
 - Set `CAST_ON_START=true` in `.env` (copy `.env.example`). The board casts to
@@ -95,7 +173,7 @@ the admin address on their TV. All they need to give you is their Wi-Fi name
 and password and, optionally, their Brewfather User ID and API key (or they
 can paste those into the admin page themselves later).
 
-Flash the card, get the board onto *your* Wi-Fi once, then on your own
+Flash the card and get the board onto *your* Wi-Fi once (step 1 above), then on your own
 brewtoscreen's admin page use **Set up a board for someone**: click *Find
 boards on this Wi-Fi*, pick it, enter the board's login, their Wi-Fi, their
 Brewfather details if you have them, a title and a hostname, and press *Set it
