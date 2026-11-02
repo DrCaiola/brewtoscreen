@@ -1,0 +1,2 @@
+# These run on Linux boards, so they must keep LF even when cloned on Windows.
+*.sh text eol=lf

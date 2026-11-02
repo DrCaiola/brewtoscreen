@@ -295,6 +295,15 @@ app.post('/api/publish', wrap(async (req, res) => {
   res.json({ ok: true, ...result, url: publisher.url });
 }));
 
+// Developer options: shows website publishing and board setup on the admin page.
+// This only hides those sections; a configured website keeps publishing either way.
+app.get('/api/dev', (req, res) => res.json({ dev: Boolean(settings.devMode) }));
+app.put('/api/dev', wrap(async (req, res) => {
+  settings.devMode = Boolean(req.body?.dev);
+  await saveSettings();
+  res.json({ dev: settings.devMode });
+}));
+
 // Set up a board for someone else, over SSH from here (see lib/provision.js).
 app.get('/api/provision/scan', wrap(async (req, res) => res.json({ boards: await scanForBoards() })));
 app.get('/api/provision/status', (req, res) => res.json({ job: currentJob() }));

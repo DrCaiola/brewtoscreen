@@ -76,22 +76,27 @@ only.
    and flash it with [balenaEtcher](https://etcher.balena.io/) or
    [Rufus](https://rufus.ie/). If a current image refuses to boot, people on
    the DietPi forum report the Orange Pi Zero 3 image works on the Zero 2W.
-2. Wi-Fi, the easy way, if Windows can open the card after flashing: edit
-   `dietpi.txt` to set `AUTO_SETUP_NET_WIFI_ENABLED=1`, and in
-   `dietpi-wifi.txt` set `aWIFI_SSID[0]` and `aWIFI_KEY[0]` to your network
-   name and password. Then it joins on its own at first boot.
-3. Wi-Fi, the way we did it, if the card shows no readable folder (the Zero 2W
-   image is a single Linux partition Windows can't open): plug the board into
-   a TV with the mini-HDMI cable, attach the keyboard through the OTG adapter,
-   and power it on. First boot takes a couple of minutes. Log in as `root`
-   with password `dietpi`. The first-run setup makes you change the `root` and
-   `dietpi` passwords and asks about an optional survey. To join Wi-Fi, use
-   **dietpi-config → Network Options: Adapters → WiFi**, scan, pick your
-   network, and enter the password. If no Wi-Fi adapter shows up, reboot once
-   and try again.
-4. Run `hostname -I` and note the address, then unplug the keyboard and HDMI.
-   SSH is already on (DietPi uses Dropbear), and the `dietpi` user has
-   passwordless sudo, which is what the install scripts need.
+2. Wi-Fi, no keyboard or screen: before the first boot, open the card on your
+   computer and edit `dietpi.txt` to set `AUTO_SETUP_NET_WIFI_ENABLED=1`, and
+   in `dietpi-wifi.txt` set `aWIFI_SSID[0]` and `aWIFI_KEY[0]` to your network
+   name and password. Put the card in the board and power it on. It joins your
+   Wi-Fi by itself within a few minutes; find its address in your router's
+   device list or with **Find boards** on an existing brewtoscreen.
+3. Finish DietPi's own setup, which only happens on the first login:
+   `ssh root@<board-ip>`, default password `dietpi`. It installs updates, makes
+   you change the `root` and `dietpi` passwords, and asks about an optional
+   survey. At the software menu choose **Install** with nothing selected. Type
+   `exit` when you reach a normal prompt. The DietPi docs also describe setting
+   `AUTO_SETUP_AUTOMATED=1` and `AUTO_SETUP_GLOBAL_PASSWORD` in `dietpi.txt` to
+   skip these prompts; we haven't tried that here.
+4. No readable folder on the card? Use a screen instead: plug the board into a
+   TV with the mini-HDMI cable, attach the keyboard through the OTG adapter,
+   power on, log in as `root` / `dietpi`, go through the same prompts, and join
+   Wi-Fi in **dietpi-config → Network Options: Adapters → WiFi**. If no Wi-Fi
+   adapter shows up, reboot once and try again. `hostname -I` shows the address.
+
+SSH is on by default (DietPi uses Dropbear), and the `dietpi` user has
+passwordless sudo, which is what the install scripts need.
 
 Either way, reserve the board's address in your router (in the Google Home
 app: Wi-Fi → Devices → the board → Reserve IP) so the URL the TV loads never
@@ -130,10 +135,12 @@ bash deploy/push-to-pi.sh dietpi@<board-ip>
 ```
 
 It copies the project over, installs Node and dependencies if needed, writes a
-systemd service that starts on boot and restarts on crashes, and starts it. It
-also copies your `.env`, `data/taps.json` and `data/settings.json`, so the
-board starts with the same credentials, taps and default TV as the laptop.
-Run the same command again any time to ship updates.
+systemd service that starts on boot and restarts on crashes, and starts it.
+Run the same command again any time to ship updates; taps and settings on the
+board are left alone. Add `--with-data` once if you want the board to start
+with this machine's `.env`, `data/taps.json` and `data/settings.json`. It
+replaces the board's copies, so don't use it after you've started changing
+taps on the board.
 
 **On the board itself.**
 
@@ -173,8 +180,9 @@ the admin address on their TV. All they need to give you is their Wi-Fi name
 and password and, optionally, their Brewfather User ID and API key (or they
 can paste those into the admin page themselves later).
 
-Flash the card and get the board onto *your* Wi-Fi once (step 1 above), then on your own
-brewtoscreen's admin page use **Set up a board for someone**: click *Find
+Flash the card and get the board onto *your* Wi-Fi once (step 1 above, including
+DietPi's first login). Then on your own brewtoscreen's admin page tick
+**Developer options** at the bottom and use **Set up a board for someone**: click *Find
 boards on this Wi-Fi*, pick it, enter the board's login, their Wi-Fi, their
 Brewfather details if you have them, a title and a hostname, and press *Set it
 up*. No terminal; it runs over SSH from your brewtoscreen and shows a live
@@ -229,7 +237,8 @@ skipped when nothing changed.
    <https://github.com/settings/personal-access-tokens/new>: repository
    access *Only select repositories* with just the site repo, and
    **Contents: Read and write**.
-2. On the admin page, in **Website**, enter the repo as `owner/name`, the
+2. On the admin page, tick **Developer options** at the bottom. Publishing keeps
+   running if you untick it later; that only hides the section. In **Website**, enter the repo as `owner/name`, the
    branch, the file path, how often to republish, the token, and optionally
    the public URL where the page is shown (it appears in the board's footer).
    **Save and test** checks that the token can write to the repo before

@@ -145,10 +145,17 @@
     <div class="msg" id="castMsg"></div>
   </section>
 
-  <section>
+  <section id="provisionSection" hidden>
     <h2>Set up a board for someone</h2>
     <p class="muted">Turn a freshly flashed Raspberry Pi / Orange Pi (DietPi, Raspberry Pi OS, Armbian) into a plug-and-play tap board for a friend.
-      The board must be on <em>this</em> Wi-Fi right now with SSH on. Everything below happens from here over SSH; at their house they just plug it in.</p>
+      Everything below happens from here over SSH; at their house they just plug it in.</p>
+    <p class="muted" style="margin-bottom:4px"><strong>Before you start:</strong></p>
+    <ol class="muted" style="margin:0 0 12px; padding-left:20px">
+      <li>Flash the card and put <em>your</em> Wi-Fi on it, so the board joins this network. <a href="https://github.com/DrCaiola/brewtoscreen#1-flash-the-card-and-get-the-board-on-wi-fi" target="_blank">Instructions</a>.</li>
+      <li>Power it on and wait a few minutes. It appears when you click <em>Find boards</em> below.</li>
+      <li><strong>DietPi only: log in once from a terminal</strong> to finish its own setup: <code>ssh root@&lt;board-address&gt;</code>, default password <code>dietpi</code>.
+        Set the new passwords, then choose <em>Install</em> with nothing selected. The password you set for <code>dietpi</code> is the one to enter below.</li>
+    </ol>
     <div class="row">
       <button id="pvScan">Find boards on this Wi-Fi</button>
       <span id="pvBoards"></span>
@@ -176,7 +183,7 @@
     <div class="msg" id="pvMsg"></div>
   </section>
 
-  <section id="publishSection">
+  <section id="publishSection" hidden>
     <h2>Website</h2>
     <p class="muted">Optional. brewtoscreen can write the tap list as a JSON file into a GitHub repo, so a static site (GitHub Pages, your own domain) shows what's on tap
       to people who aren't on your Wi-Fi. Make a <a href="https://github.com/settings/personal-access-tokens/new" target="_blank">fine-grained token</a>
@@ -196,6 +203,8 @@
     <p class="muted" id="publishInfo" style="margin:10px 0 0"></p>
     <div class="msg" id="publishMsg"></div>
   </section>
+
+  <label class="muted"><input type="checkbox" id="devMode"> Developer options (website publishing, setting up boards for other people)</label>
 </div>
 
 <script>
@@ -488,6 +497,20 @@
     const host = $('manualHost').value.trim();
     if (!host) return msg('castMsg', 'Enter the Chromecast IP first.', 'err');
     cast(host, 8009, host);
+  });
+
+  // ---- developer options ----
+  function applyDev(dev) {
+    $('devMode').checked = dev;
+    for (const id of ['provisionSection', 'publishSection']) $(id).hidden = !dev;
+  }
+  api('/api/dev').then((d) => applyDev(d.dev)).catch(() => {});
+  $('devMode').addEventListener('change', async () => {
+    try {
+      const d = await api('/api/dev', { method: 'PUT', body: JSON.stringify({ dev: $('devMode').checked }) });
+      applyDev(d.dev);
+      if (d.dev) $('provisionSection').scrollIntoView({ block: 'start' });
+    } catch { applyDev(!$('devMode').checked); }
   });
 
   // ---- set up a board for someone ----

@@ -16,6 +16,17 @@ if [ -n "$S" ] && ! sudo -n true 2>/dev/null; then
   exit 2
 fi
 
+# DietPi only finishes setting itself up during the first login. Stage 2 = done.
+if $S test -f /boot/dietpi/.install_stage; then
+  STAGE="$($S cat /boot/dietpi/.install_stage)"
+  if [ "$STAGE" != "2" ]; then
+    echo "!! DietPi has not finished its first-run setup (stage $STAGE)." >&2
+    echo "!! Log in once with: ssh root@$(hostname -I | awk '{print $1}')   (default password: dietpi)" >&2
+    echo "!! Follow the prompts, choose Install with nothing selected, then run this setup again." >&2
+    exit 3
+  fi
+fi
+
 echo ">> writing .env"
 cp .env.example .env
 sed -i "s|^BREWFATHER_USER_ID=.*|BREWFATHER_USER_ID=$BF_USER|; s|^BREWFATHER_API_KEY=.*|BREWFATHER_API_KEY=$BF_KEY|; s|^CAST_ON_START=.*|CAST_ON_START=true|" .env
